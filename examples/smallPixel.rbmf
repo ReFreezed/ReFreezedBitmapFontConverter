@@ -1,0 +1,59 @@
+version=1
+
+[in]
+colored=true
+
+[out]
+fileImage=<basename>.png
+fileDescriptor=<basename>.bmfont
+glyphSpacing=1 1
+custom.lineHeight=1.2
+
+[out]
+fileImage=<basename>_outline.png
+fileDescriptor=<basename>_outline.bmfont
+glyphSpacing=1 1
+outlineWidth=1
+outlineColor=0 0 1 1
+custom.lineHeight=1.2
+
+# ASCII characters
+[1]
+glyphs=ABCDEFGHIJKLMNOPQRSTUVWXYZ
+[2]
+glyphs=abcdefghijklmnopqrstuvwxyz
+[3]
+glyphs=0123456789
+glyphs= !"#$%&'()*+,-./:;<=>?@[\]^_`{|}~
+
+# Gamepad icons
+[4]
+icons=hatu hatr hatd hatl
+icons=axislu axislr axisld axisll axisru axisrr axisrd axisrl
+icons=axisbtnl axisbtnr
+[5]
+icons=xboxa xboxb xboxx xboxy xboxlb xboxrb xboxlt xboxrt xboxback xboxstart
+icons=pst psc psx pss psl1 psr1 psl2 psr2 psselect psstart
+
+[kerning]
+# Uppercase letters:      ABCDEFGHIJKLMNOPQRSTUVWXYZ
+# Small letters:          acemnorsuvwxz
+# Tall lowercase letters: bdfhiklt
+# Low letters:            gpqy
+# Low+tall letters:       j
+
+# f
+forward=f acdefgmnopqrsuvwxyz.,_ -1
+
+# P
+forward=P .,_ -1
+
+# T
+bothways=T acemnorsuvwxzgpqy.,_ -1
+forward=Lbhkt T d -1
+
+# Vv
+bothways=Vv .,_ -1
+
+# Other
+forward=r a -1

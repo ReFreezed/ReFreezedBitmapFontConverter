@@ -1,0 +1,30 @@
+version=1
+
+[in]
+colored=false
+# textFile=vector.rbmf
+fontFile=IcicleCountryTwo.otf
+fontSize=24
+fontHinting=mono
+
+# [edit]
+# alphaTreshold=.5
+
+[out]
+fileImage=<basename>.png
+fileDescriptor=<basename>.bmfont
+glyphSpacing=1 1
+
+[out]
+fileImage=<basename>_outline.png
+fileDescriptor=<basename>_outline.bmfont
+glyphSpacing=1 1
+outlineWidth=1
+outlineColor=0 0 0 1
+
+# The row number doesn't matter for TrueType fonts.
+[1]
+glyphs=ABCDEFGHIJKLMNOPQRSTUVWXYZ
+glyphs=abcdefghijklmnopqrstuvwxyz
+glyphs=0123456789
+glyphs= !?"'.,:-()
