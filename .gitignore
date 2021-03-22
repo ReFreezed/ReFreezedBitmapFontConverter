@@ -1,4 +1,7 @@
 /local/
+/srcgen/
 /temp/
 
 /*.sublime-*
+/conf.lua
+/main.lua

@@ -103,6 +103,9 @@ love.errhand = nil
 function love.run()
 	local startTime = require"socket".gettime()
 
+	package.path = "?.lua;srcgen/?.lua"
+	love.filesystem.setRequirePath(package.path)
+
 	_G.physfs = require"physfs"
 	_G.socket = require"socket"
 	_G.utf8   = require"utf8"
