@@ -20,7 +20,7 @@ fileImage=<basename>_outline.png
 fileDescriptor=<basename>_outline.bmfont
 glyphSpacing=1 1
 outlineWidth=1
-outlineColor=.8 .8 0 1
+outlineColor=.9 .7 0 1
 
 # The row number doesn't matter for TrueType fonts.
 [1]

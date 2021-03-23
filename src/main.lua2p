@@ -815,10 +815,6 @@ function love.run()
 			-- @Incomplete: Put glyphs in separate channels when rbmfFile.isColored is false.
 			-- @Feature: Automatic kerning calculations?
 
-			if outDescr.outlineWidth > 1 then
-				errorLine("Only 1-pixel outlines are supported currently. (%d were specified)", outDescr.outlineWidth)
-			end
-
 			-- Figure out how tall the output image should be.
 			local out_imageWidth  = 0
 			local out_imageHeight = 0
@@ -906,11 +902,12 @@ function love.run()
 			end
 
 			-- Add glyph outlines.
-			-- Probably need to @Revise this algorithm. 2021-03-22
 			if outDescr.outlineWidth > 0 then
 				local w, h              = out_imageData:getDimensions()
 				local readonlyImageData = LI.newImageData(w, h)
 
+				local outlineWidth                           = outDescr.outlineWidth
+				local outlineWidthSq                         = outlineWidth^2
 				local outlineR, outlineG, outlineB, outlineA = unpack(outDescr.outlineColor)
 
 				readonlyImageData:paste(out_imageData, 0,0, 0,0, w,h)
@@ -921,50 +918,90 @@ function love.run()
 				!GET_IMAGE_DATA_POINTER `out_imageData`
 				!GET_IMAGE_DATA_POINTER `readonlyImageData`
 
-				!MAP_PIXEL(`out_imageData`, `x`,`y`)
-					!(
-					GET_PIXEL(`readonlyImageData`, nil,nil,nil,`a`, `x`,`y`)
+				if outlineWidth == 1 then
+					!MAP_PIXEL(`out_imageData`, `x`,`y`)
+						!(
+						GET_PIXEL(`out_imageData`, `r`,`g`,`b`,`a`, `x`,`y`)
 
-					GET_PIXEL(`readonlyImageData`, nil,nil,nil,`au`,  `    x        `,`max(y-1, 0  )`)
-					GET_PIXEL(`readonlyImageData`, nil,nil,nil,`aur`, `min(x+1, w-1)`,`max(y-1, 0  )`)
-					GET_PIXEL(`readonlyImageData`, nil,nil,nil,`ar`,  `min(x+1, w-1)`,`    y        `)
-					GET_PIXEL(`readonlyImageData`, nil,nil,nil,`adr`, `min(x+1, w-1)`,`min(y+1, h-1)`)
-					GET_PIXEL(`readonlyImageData`, nil,nil,nil,`ad`,  `    x        `,`min(y+1, h-1)`)
-					GET_PIXEL(`readonlyImageData`, nil,nil,nil,`adl`, `max(x-1, 0  )`,`min(y+1, h-1)`)
-					GET_PIXEL(`readonlyImageData`, nil,nil,nil,`al`,  `max(x-1, 0  )`,`    y        `)
-					GET_PIXEL(`readonlyImageData`, nil,nil,nil,`aul`, `max(x-1, 0  )`,`max(y-1, 0  )`)
+						GET_PIXEL(`readonlyImageData`, nil,nil,nil,`au`,  `    x        `,`max(y-1, 0  )`)
+						GET_PIXEL(`readonlyImageData`, nil,nil,nil,`aur`, `min(x+1, w-1)`,`max(y-1, 0  )`)
+						GET_PIXEL(`readonlyImageData`, nil,nil,nil,`ar`,  `min(x+1, w-1)`,`    y        `)
+						GET_PIXEL(`readonlyImageData`, nil,nil,nil,`adr`, `min(x+1, w-1)`,`min(y+1, h-1)`)
+						GET_PIXEL(`readonlyImageData`, nil,nil,nil,`ad`,  `    x        `,`min(y+1, h-1)`)
+						GET_PIXEL(`readonlyImageData`, nil,nil,nil,`adl`, `max(x-1, 0  )`,`min(y+1, h-1)`)
+						GET_PIXEL(`readonlyImageData`, nil,nil,nil,`al`,  `max(x-1, 0  )`,`    y        `)
+						GET_PIXEL(`readonlyImageData`, nil,nil,nil,`aul`, `max(x-1, 0  )`,`max(y-1, 0  )`)
 
-					local DIAGONAL_SIGNIFICANCE = .4
-					)
+						local DIAGONAL_SIGNIFICANCE = .4
+						)
 
-					local highestNearbyAlpha = max(
-						au,
-						aur * !(DIAGONAL_SIGNIFICANCE),
-						ar,
-						adr * !(DIAGONAL_SIGNIFICANCE),
-						ad,
-						adl * !(DIAGONAL_SIGNIFICANCE),
-						al,
-						aul * !(DIAGONAL_SIGNIFICANCE),
-						a
-					)
+						local neighborAlpha = max(
+							au,
+							aur * !(DIAGONAL_SIGNIFICANCE),
+							ar,
+							adr * !(DIAGONAL_SIGNIFICANCE),
+							ad,
+							adl * !(DIAGONAL_SIGNIFICANCE),
+							al,
+							aul * !(DIAGONAL_SIGNIFICANCE),
+							a
+						)
 
-					!GET_PIXEL(`out_imageData`, `r`,`g`,`b`,nil, `x`,`y`)
+						r = r*a + (1-a)*outlineR
+						g = g*a + (1-a)*outlineG
+						b = b*a + (1-a)*outlineB
+						a = a   + (1-a)*outlineA*neighborAlpha
 
-					r = r*a + (1-a)*outlineR
-					g = g*a + (1-a)*outlineG
-					b = b*a + (1-a)*outlineB
-					a = a   + (1-a)*outlineA*highestNearbyAlpha
+						!SET_PIXEL(`out_imageData`, `x`,`y`, `r`,`g`,`b`,`a`, true)
+						-- !SET_PIXEL(`out_imageData`, `x`,`y`, 1,0,0,`a`, true) -- DEBUG: Show result in mono-color.
+						-- if neighborAlpha == 0 then  !(do SET_PIXEL(`out_imageData`, `x`,`y`, 1,0,0,1, true) end)  end -- DEBUG: Show unaffected pixels.
+					!MAP_PIXEL_END()
 
-					!SET_PIXEL(`out_imageData`, `x`,`y`, `r`,`g`,`b`,`a`, true)
-					-- !SET_PIXEL(`out_imageData`, `x`,`y`, 1,0,0,`a`, true) -- DEBUG
+				else--if outlineWidth > 1 then -- @Incomplete: Add a setting that forces this method.
+					--
+					-- This doesn't look very good for partially diagonal lines in fonts with smooth
+					-- edges/half-transparent pixels, but there's only so much that can be done when
+					-- all we have are pixels. Maybe we can do something better for TrueType fonts?
+					--
+					!MAP_PIXEL(`out_imageData`, `x`,`y`)
+						---------------------
+						!GET_PIXEL(`out_imageData`, `r`,`g`,`b`,`a`, `x`,`y`)
 
-					--[[ DEBUG
-					if highestNearbyAlpha == 0 then
-						!SET_PIXEL(`out_imageData`, `x`,`y`, 1,0,0,1, true)
-					end
-					--]]
-				!MAP_PIXEL_END()
+						local neighborAlpha = a
+
+						for circleY = max(y-outlineWidth, 0), min(y+outlineWidth, h-1) do
+							for circleX = max(x-outlineWidth, 0), min(x+outlineWidth, w-1) do
+								local distSq = (circleX-x)*(circleX-x) + (circleY-y)*(circleY-y)
+
+								-- if distSq <= outlineWidthSq then
+									!GET_PIXEL(`readonlyImageData`, nil,nil,nil,`circleA`, `circleX`,`circleY`)
+
+									-- This doesn't look good in some cases if there are full shapes with half-
+									-- transparent pixels (generally if the font is a bit too thin in places).
+									-- We use the next piece of code instead!
+									-- neighborAlpha = max(neighborAlpha, circleA*min(max(outlineWidth-distSq^.5, 0), 1))
+
+									if circleA > .4 then -- @Hardcoded alpha treshold. (How does e.g. Photoshop create outline effects on layers? I think they use a treshold similar to this.)
+										neighborAlpha = max(neighborAlpha, min(outlineWidth-distSq^.5+1, 1)) -- (Why is +1 needed here for the result to be correct?)
+
+										-- Maybe something like this would be better than the above? Also, maybe we should
+										-- support float widths for outlines? That would achieve the same effect I think.
+										-- neighborAlpha = max(neighborAlpha, min(max(outlineWidth-distSq^.5-.3, 0), 1))
+									end
+								-- end
+							end
+						end
+
+						r = r*a + (1-a)*outlineR
+						g = g*a + (1-a)*outlineG
+						b = b*a + (1-a)*outlineB
+						a = a   + (1-a)*outlineA*neighborAlpha
+
+						!SET_PIXEL(`out_imageData`, `x`,`y`, `r`,`g`,`b`,`a`, true)
+						-- !SET_PIXEL(`out_imageData`, `x`,`y`, 1,0,0,`a`, true) -- DEBUG: Show result in mono-color.
+						-- if neighborAlpha == 0 then  !(do SET_PIXEL(`out_imageData`, `x`,`y`, 1,0,0,1, true) end)  end -- DEBUG: Show unaffected pixels.
+					!MAP_PIXEL_END()
+				end
 			end
 
 			-- Write kernings.
