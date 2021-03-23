@@ -372,6 +372,27 @@ function _G.parseInt4(s)
 	return true, tonumber(nStr1), tonumber(nStr2), tonumber(nStr3), tonumber(nStr4)
 end
 
+function _G.parseUint(s)
+	if not s:find"^%d+$" then
+		return false, F("Expected an unsigned integer - got '%s'.", s)
+	end
+	return true, tonumber(s)
+end
+function _G.parseUint2(s)
+	local nStr1, nStr2 = s:match"^(%d+) +(%d+)$"
+	if not nStr1 then
+		return false, F("Expected 2 unsigned integers - got '%s'.", s)
+	end
+	return true, tonumber(nStr1), tonumber(nStr2)
+end
+function _G.parseUint4(s)
+	local nStr1, nStr2, nStr3, nStr4 = s:match"^(%d+) +(%d+) +(%d+) +(%d+)$"
+	if not nStr1 then
+		return false, F("Expected 4 unsigned integers - got '%s'.", s)
+	end
+	return true, tonumber(nStr1), tonumber(nStr2), tonumber(nStr3), tonumber(nStr4)
+end
+
 
 
 do

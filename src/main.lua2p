@@ -272,7 +272,7 @@ function love.run()
 					fileError(rbmfFile, "The first line must be the file version number!")
 				end
 
-				rbmfFile.version = fileAssert(rbmfFile, parseInt(v))
+				rbmfFile.version = fileAssert(rbmfFile, parseUint(v))
 				if rbmfFile.version ~= 1 then
 					fileError(rbmfFile, "Unsupported file version '%d'.", rbmfFile.version)
 				end
@@ -313,7 +313,7 @@ function love.run()
 				elseif k == "fontFile" then
 					rbmfFile.fontFilename = (v ~= "" and v or fileError(rbmfFile, "TrueType font path cannot be empty."))
 				elseif k == "fontSize" then
-					rbmfFile.fontSize = fileAssert(rbmfFile, parseInt(v))
+					rbmfFile.fontSize = fileAssert(rbmfFile, parseUint(v))
 					if rbmfFile.fontSize < 1 then
 						fileError(rbmfFile, "TrueType font size must be positive. (Value is '%s')", v)
 					end
@@ -362,12 +362,12 @@ function love.run()
 					currentOutDescr.pathDescriptor     = appendPath(out_directory, currentOutDescr.filenameDescriptor)
 
 				elseif k == "glyphPadding" then
-					currentOutDescr.glyphPaddingU, currentOutDescr.glyphPaddingR, currentOutDescr.glyphPaddingD, currentOutDescr.glyphPaddingL = fileAssert(rbmfFile, parseInt4(v))
+					currentOutDescr.glyphPaddingU, currentOutDescr.glyphPaddingR, currentOutDescr.glyphPaddingD, currentOutDescr.glyphPaddingL = fileAssert(rbmfFile, parseUint4(v))
 				elseif k == "glyphSpacing" then
-					currentOutDescr.glyphSpacingH, currentOutDescr.glyphSpacingV = fileAssert(rbmfFile, parseInt2(v))
+					currentOutDescr.glyphSpacingH, currentOutDescr.glyphSpacingV = fileAssert(rbmfFile, parseUint2(v))
 
 				elseif k == "outlineWidth" then
-					currentOutDescr.outlineWidth = fileAssert(rbmfFile, parseInt(v))
+					currentOutDescr.outlineWidth = fileAssert(rbmfFile, parseUint(v))
 				elseif k == "outlineColor" then
 					local r, g, b, a = v:match"^(%d*%.?%d+) +(%d*%.?%d+) +(%d*%.?%d+) +(%d*%.?%d+)$"
 
@@ -821,7 +821,7 @@ function love.run()
 			local out_imageWidth  = 0
 			local out_imageHeight = 0
 			local x               = 1/0
-			local y               = -(in_lineHeight + 2*outDescr.outlineWidth)
+			local y               = -(in_lineHeight + 2*outDescr.outlineWidth + outDescr.glyphPaddingU+outDescr.glyphPaddingD)
 
 			for _, glyphInfo in ipairs(glyphs) do
 				local wPadded = glyphInfo.inW + 2*outDescr.outlineWidth + outDescr.glyphPaddingL + outDescr.glyphPaddingR
