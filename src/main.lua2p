@@ -583,7 +583,7 @@ function love.run()
 			in_lineHeight = font:getHeight()
 			in_lineDist   = in_lineHeight + 1
 
-			-- Collect all characters. Note that we set the coords later.
+			-- Collect all glyphs. Note that we set the coords later.
 			local missingCps = {}
 
 			for cp in pairs(rbmfFile.textCodepoints) do -- textCodepoints should be empty if useTextFiles is unset.
@@ -613,7 +613,7 @@ function love.run()
 			end
 
 			if not glyphs[1] then
-				fileError(rbmfFile, "No characters to export from fontFile '%s'.", rbmfFile.fontFilename)
+				fileError(rbmfFile, "No glyphs to export from fontFile '%s'.", rbmfFile.fontFilename)
 			end
 
 			if next(missingCps) then
@@ -635,7 +635,7 @@ function love.run()
 				end
 			end
 
-			-- Figure out virtual input image size and character coords.
+			-- Figure out virtual input image size and glyph coords.
 			local virtual_imageMaxWidth = LG.getSystemLimits().texturesize
 			local virtual_imageWidth    = 0
 			local virtual_imageHeight   = 0
@@ -812,7 +812,7 @@ function love.run()
 		-- Write output images and descriptors
 		--
 		for _, outDescr in ipairs(rbmfFile.outputDescriptors) do
-			-- @Incomplete: Put characters in separate channels when rbmfFile.isColored is false.
+			-- @Incomplete: Put glyphs in separate channels when rbmfFile.isColored is false.
 			-- @Feature: Automatic kerning calculations?
 
 			if outDescr.outlineWidth > 1 then
@@ -905,12 +905,13 @@ function love.run()
 				x = x + wPadded + outDescr.glyphSpacingH
 			end
 
-			-- Add character outlines.
+			-- Add glyph outlines.
 			-- Probably need to @Revise this algorithm. 2021-03-22
-			-- @Incomplete: Use outDescr.outlineColor.
 			if outDescr.outlineWidth > 0 then
 				local w, h              = out_imageData:getDimensions()
 				local readonlyImageData = LI.newImageData(w, h)
+
+				local outlineR, outlineG, outlineB, outlineA = unpack(outDescr.outlineColor)
 
 				readonlyImageData:paste(out_imageData, 0,0, 0,0, w,h)
 
@@ -948,14 +949,21 @@ function love.run()
 						a
 					)
 
-					if highestNearbyAlpha > 0 then
-						!GET_PIXEL(`out_imageData`, `r`,`g`,`b`,nil, `x`,`y`)
-						!SET_PIXEL(`out_imageData`, `x`,`y`, `r*a`,`g*a`,`b*a`,`highestNearbyAlpha`, true)
-						-- !SET_PIXEL(`out_imageData`, `x`,`y`, 1,`g*a`,`b*a`,`highestNearbyAlpha`, true) -- DEBUG
-					-- else
-						-- !SET_PIXEL(`out_imageData`, `x`,`y`, 0,0,0,0) -- Useless.
-						-- !SET_PIXEL(`out_imageData`, `x`,`y`, 1,0,0,1) -- DEBUG
+					!GET_PIXEL(`out_imageData`, `r`,`g`,`b`,nil, `x`,`y`)
+
+					r = r*a + (1-a)*outlineR
+					g = g*a + (1-a)*outlineG
+					b = b*a + (1-a)*outlineB
+					a = a   + (1-a)*outlineA*highestNearbyAlpha
+
+					!SET_PIXEL(`out_imageData`, `x`,`y`, `r`,`g`,`b`,`a`, true)
+					-- !SET_PIXEL(`out_imageData`, `x`,`y`, 1,0,0,`a`, true) -- DEBUG
+
+					--[[ DEBUG
+					if highestNearbyAlpha == 0 then
+						!SET_PIXEL(`out_imageData`, `x`,`y`, 1,0,0,1, true)
 					end
+					--]]
 				!MAP_PIXEL_END()
 			end
 
