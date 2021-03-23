@@ -22,8 +22,8 @@ local CMD_HELP = [=[
 		Relative --textfile paths will be relative to CWD, unlike the 'textFile' input descriptor field.
 ]=]
 
-local CMD_TITLE     = "ReFreezed Bitmap Font converter"
-local CMD_SEPARATOR = ("-"):rep(#CMD_TITLE)
+!local CMD_TITLE     = "ReFreezed Bitmap Font converter"
+!local CMD_SEPARATOR = string.rep("-", #CMD_TITLE)
 
 local programArguments = arg
 
@@ -142,7 +142,7 @@ function love.run()
 			i = i+1
 
 		elseif args[i] == "--help" then
-			print(CMD_TITLE)
+			print!(CMD_TITLE)
 			print()
 			print((CMD_HELP:gsub("\t", "    ")))
 			return
@@ -183,13 +183,13 @@ function love.run()
 		errorLine("Argument: Missing any input path.") -- @UX: Show help.
 	end
 
-	print(CMD_TITLE)
-	print(CMD_SEPARATOR)
+	print!(CMD_TITLE)
+	print!(CMD_SEPARATOR)
 	print(os.date"          %Y-%m-%d %H:%M:%S")
 	printf(      "   Input: %s", table.concat(in_paths, ", "))
 	printf(      "  Output: %s", (out_directory ~= "" and out_directory or "(in input directory)"))
 	printf(      "MaxWidth: %d", out_imageMaxWidth)
-	print(CMD_SEPARATOR)
+	print!(CMD_SEPARATOR)
 
 	-- Collect all paths to process.
 	local rbmfFiles = {}
@@ -402,6 +402,8 @@ function love.run()
 
 			elseif section:find"^%d+$" then
 				if k == "glyphs" then
+					local row = tonumber(section)
+
 					for _, cp in utf8.codes(v) do
 						if rbmfFile.codepointLines[cp] then
 							fileError(
@@ -410,7 +412,6 @@ function love.run()
 							)
 						end
 
-						local row = tonumber(section) -- @Speed
 						addCodepoint(rbmfFile, row, cp, nil)
 					end
 
@@ -418,6 +419,8 @@ function love.run()
 					v = trim(v)
 
 					if k == "icons" then
+						local row = tonumber(section)
+
 						for icon in v:gmatch"%S+" do
 							local cp = getIconCodepoint(icon)
 
@@ -425,7 +428,6 @@ function love.run()
 								fileError(rbmfFile, "Icon '%s' already appeared previously on line %d.", icon, rbmfFile.codepointLines[cp])
 							end
 
-							local row = tonumber(section) -- @Speed
 							addCodepoint(rbmfFile, row, cp, icon)
 						end
 
@@ -486,14 +488,14 @@ function love.run()
 		end
 
 		if rbmfFile.textFilePaths[1] and rbmfFile.fontFilename == "" then
-			fileError(rbmfFile, "%d text file%s was specified, but no TrueType font.", #rbmfFile.textFilePaths, S(rbmfFile.textFilePaths))
+			fileError(rbmfFile, "%d text file%s was specified, but no TrueType font.", #rbmfFile.textFilePaths, S(#rbmfFile.textFilePaths))
 		end
 
 		if rbmfFile.fontFilename ~= "" and rbmfFile.fontSize == 0 then
-			fileError(rbmfFile, "A TrueType font was specified, but no font size.", #rbmfFile.textFilePaths, S(rbmfFile.textFilePaths))
+			fileError(rbmfFile, "A TrueType font was specified, but no font size.", #rbmfFile.textFilePaths, S(#rbmfFile.textFilePaths))
 		end
 		if rbmfFile.fontSize > 0 and rbmfFile.fontFilename == "" then
-			fileError(rbmfFile, "A font size was specified, but no TrueType font.", #rbmfFile.textFilePaths, S(rbmfFile.textFilePaths))
+			fileError(rbmfFile, "A font size was specified, but no TrueType font.", #rbmfFile.textFilePaths, S(#rbmfFile.textFilePaths))
 		end
 
 		rbmfFile.useTextFiles = (in_textFilesForAll[1] or rbmfFile.textFilePaths[1]) ~= nil
@@ -699,19 +701,22 @@ function love.run()
 			in_imageData = LI.newImageData(imageFilename)
 
 			-- Get separator line color.
-			local sepR, sepG, sepB, sepA = in_imageData:getPixel(0, 0) -- @Speed: Don't use getPixel() - use getData() and JIT!
+			!GET_IMAGE_DATA_POINTER `in_imageData`
+			!GET_PIXEL(`in_imageData`, `sepR`,`sepG`,`sepB`,`sepA`, 0,0)
 
 			-- Get line height and distance.
 			-- LineDistance = SeparatorHeight + LineHeight
 			in_lineDist = in_imageData:getHeight() - 1
 
 			for y = 1, in_imageData:getHeight()-1 do
-				local r, g, b, a = in_imageData:getPixel(1, y)
+				!GET_PIXEL(`in_imageData`, `r`,`g`,`b`,`a`, 1,`y`)
+
 				if r == sepR and g == sepG and b == sepB and a == sepA then
 					in_lineDist = y
 					break
 				end
 			end
+
 			in_lineHeight = in_lineDist - 1
 			assert(in_lineHeight >= 1)
 
@@ -735,13 +740,25 @@ function love.run()
 				local glyphStartX = x
 
 				for i, cp in ipairs(cpsOnRow) do
-					x = findNextPixelOnX(in_imageData, x,y, sepR,sepG,sepB,sepA)
-					if not x then
+					local xNext = -1
+
+					for x = x, in_imageData:getWidth()-1 do
+						!GET_PIXEL(`in_imageData`, `r`,`g`,`b`,`a`, `x`,`y`)
+
+						if r == sepR and g == sepG and b == sepB and a == sepA then
+							xNext = x
+							break
+						end
+					end
+
+					if xNext < 0 then
 						errorLine(
 							"%s: Missing glyphs on row %d. (Expected %d, found %d)",
 							imageFilename, row, #cpsOnRow, i-1
 						)
 					end
+
+					x = xNext
 
 					if not (textCps and not textCps[cp]) then
 						local glyphInfo = {cp=cp, x1=glyphStartX, y1=y, x2=x-1, y2=y+in_lineDist-2}
@@ -897,43 +914,49 @@ function love.run()
 
 				readonlyImageData:paste(out_imageData, 0,0, 0,0, w,h)
 
-				local function getAlpha(x, y)
-					if x >= 0 and y >= 0 and x < w and y < h then
-						local _, _, _, a = readonlyImageData:getPixel(x, y)
-						return a
-					else
-						return 0
-					end
-				end
+				local min = math.min
+				local max = math.max
 
-				local DIAGONAL_SIGNIFICANCE = .4
+				!GET_IMAGE_DATA_POINTER `out_imageData`
+				!GET_IMAGE_DATA_POINTER `readonlyImageData`
 
-				out_imageData:mapPixel(function(x,y, r,g,b,a)
-					local highestNearbyAlpha = math.max(
-						--[[u ]] getAlpha(x,   y-1),
-						--[[ur]] getAlpha(x+1, y-1)*DIAGONAL_SIGNIFICANCE,
-						--[[ r]] getAlpha(x+1, y  ),
-						--[[dr]] getAlpha(x+1, y+1)*DIAGONAL_SIGNIFICANCE,
-						--[[d ]] getAlpha(x,   y+1),
-						--[[dl]] getAlpha(x-1, y+1)*DIAGONAL_SIGNIFICANCE,
-						--[[ l]] getAlpha(x-1, y  ),
-						--[[ul]] getAlpha(x-1, y-1)*DIAGONAL_SIGNIFICANCE,
+				!MAP_PIXEL(`out_imageData`, `x`,`y`)
+					!(
+					GET_PIXEL(`readonlyImageData`, nil,nil,nil,`a`, `x`,`y`)
+
+					GET_PIXEL(`readonlyImageData`, nil,nil,nil,`au`,  `    x        `,`max(y-1, 0  )`)
+					GET_PIXEL(`readonlyImageData`, nil,nil,nil,`aur`, `min(x+1, w-1)`,`max(y-1, 0  )`)
+					GET_PIXEL(`readonlyImageData`, nil,nil,nil,`ar`,  `min(x+1, w-1)`,`    y        `)
+					GET_PIXEL(`readonlyImageData`, nil,nil,nil,`adr`, `min(x+1, w-1)`,`min(y+1, h-1)`)
+					GET_PIXEL(`readonlyImageData`, nil,nil,nil,`ad`,  `    x        `,`min(y+1, h-1)`)
+					GET_PIXEL(`readonlyImageData`, nil,nil,nil,`adl`, `max(x-1, 0  )`,`min(y+1, h-1)`)
+					GET_PIXEL(`readonlyImageData`, nil,nil,nil,`al`,  `max(x-1, 0  )`,`    y        `)
+					GET_PIXEL(`readonlyImageData`, nil,nil,nil,`aul`, `max(x-1, 0  )`,`max(y-1, 0  )`)
+
+					local DIAGONAL_SIGNIFICANCE = .4
+					)
+
+					local highestNearbyAlpha = max(
+						au,
+						aur * !(DIAGONAL_SIGNIFICANCE),
+						ar,
+						adr * !(DIAGONAL_SIGNIFICANCE),
+						ad,
+						adl * !(DIAGONAL_SIGNIFICANCE),
+						al,
+						aul * !(DIAGONAL_SIGNIFICANCE),
 						a
 					)
 
-					if highestNearbyAlpha == 0 then
-						-- do  return 1, 0, 0, 1  end -- DEBUG
-						return 0, 0, 0, 0
+					if highestNearbyAlpha > 0 then
+						!GET_PIXEL(`out_imageData`, `r`,`g`,`b`,nil, `x`,`y`)
+						!SET_PIXEL(`out_imageData`, `x`,`y`, `r*a`,`g*a`,`b*a`,`highestNearbyAlpha`, true)
+						-- !SET_PIXEL(`out_imageData`, `x`,`y`, 1,`g*a`,`b*a`,`highestNearbyAlpha`, true) -- DEBUG
+					-- else
+						-- !SET_PIXEL(`out_imageData`, `x`,`y`, 0,0,0,0) -- Useless.
+						-- !SET_PIXEL(`out_imageData`, `x`,`y`, 1,0,0,1) -- DEBUG
 					end
-
-					r = r * a
-					g = g * a
-					b = b * a
-					a = highestNearbyAlpha
-
-					-- do  return 1, g, b, a  end -- DEBUG
-					return r, g, b, a
-				end)
+				!MAP_PIXEL_END()
 			end
 
 			-- Write kernings.
@@ -1002,15 +1025,15 @@ function love.run()
 	--
 	local endTime = socket.gettime()
 
-	print(CMD_SEPARATOR)
+	print!(CMD_SEPARATOR)
 	if warningCount > 0 then
-		printf("Completed with %d warning%s!", warningCount, (warningCount == 1 and "" or "s"))
+		printf("Completed with %d warning%s!", warningCount, S(warningCount))
 	else
 		print("Completed successfully!")
 	end
 	printf("Time:  %.3f seconds", endTime-startTime)
 	printf("Icons: %d", getIconCount())
-	print(CMD_SEPARATOR)
+	print!(CMD_SEPARATOR)
 	print()
 
 	return function()

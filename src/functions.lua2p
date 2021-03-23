@@ -14,7 +14,6 @@
 	connectToDirectory
 	errorf, warning, errorLine
 	fileError, fileWarning, fileAssert
-	findNextPixelOnX
 	getDirectoryItems
 	getFileContents, isFile, eachFilenameInDirectory
 	getFilename, getDirectory, getBasename, appendPath
@@ -98,21 +97,32 @@ function _G.warning(s, ...)
 	io.stderr:write(F("Warning(%d): "..s, warningCount, ...), "\n")
 end
 
+-- errorLine( message )
+-- errorLine( messageFormat, value1, ... )
 function _G.errorLine(s, ...)
 	if select("#", ...) > 0 then  s = F(s, ...)  end
-	io.stderr:write("Error: ", s, "\n")
-	os.exit(1)
+	!if DEV then
+		error(s, 2)
+	!else
+		io.stderr:write("Error: ", s, "\n")
+		os.exit(1)
+	!end
 end
 
 
 
 function _G.fileError(info, s, ...)
-	if info.ln > 0 then
-		io.stderr:write(F("Error: %s:%d: "..s, getFilename(info.path), info.ln, ...), "\n\n")
-	else
-		io.stderr:write(F("Error: %s: "   ..s, getFilename(info.path),          ...), "\n\n")
-	end
-	os.exit(1)
+	s = (
+		info.ln > 0
+		and F("%s:%d: "..s, getFilename(info.path), info.ln, ...)
+		or  F("%s: "   ..s, getFilename(info.path),          ...)
+	)
+	!if DEV then
+		error(s, 2)
+	!else
+		io.stderr:write("Error: ", s, "\n\n")
+		os.exit(1)
+	!end
 end
 
 function _G.fileWarning(info, s, ...)
@@ -124,23 +134,10 @@ function _G.fileWarning(info, s, ...)
 end
 
 -- value1, ... = fileAssert( info, success, value1, ...  )
---               fileAssert( info, success, errorMessage )
+--               fileAssert( info, success, message )
 function _G.fileAssert(info, ok, ...)
 	if not ok then  fileError(info, "%s", (...))  end
 	return ...
-end
-
-
-
--- x|nil = findNextPixelOnX( image, x,y, r,g,b,a )
-function _G.findNextPixelOnX(image, x,y, r0,g0,b0,a0)
-	for x = x, image:getWidth()-1 do
-		local r,g,b,a = image:getPixel(x, y)
-		if r == r0 and g == g0 and b == b0 and a == a0 then
-			return x
-		end
-	end
-	return nil -- Pixel not found!
 end
 
 
@@ -434,9 +431,9 @@ end
 
 
 
--- text = S( array [, textSingle="", textMulti="s" ] )
-function _G.S(t, textSingle, textMulti)
-	return (#t == 1)
+-- text = S( count [, textSingle="", textMulti="s" ] )
+function _G.S(count, textSingle, textMulti)
+	return (count == 1)
 	   and (textSingle or "")
 	   or  (textMulti  or "s")
 end

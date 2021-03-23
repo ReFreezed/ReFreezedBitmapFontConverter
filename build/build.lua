@@ -15,24 +15,19 @@ io.stdout:setvbuf("no")
 io.stderr:setvbuf("no")
 collectgarbage("stop")
 
-local DIR_HERE = debug.getinfo(1, "S").source:match"^@(.+)":gsub("\\", "/"):gsub("/?[^/]+$", ""):gsub("^$", ".")
-
 print("Building...")
-
-local debugMode = false
-
-for _, arg in ipairs(arg) do
-	if arg == "--debug" then
-		debugMode = true
-	else
-		error("Unknown argument '"..arg.."'.")
-	end
-end
-
 local buildStartTime = os.clock()
+
+local DIR_HERE = debug.getinfo(1, "S").source:match"^@(.+)":gsub("\\", "/"):gsub("/?[^/]+$", ""):gsub("^$", ".")
 
 local pp  = require"build.preprocess"
 local lfs = require"lfs"
+
+local devMode = false
+
+--
+-- Functions
+--
 
 local function copyFile(pathFrom, pathTo)
 	local file = assert(io.open(pathFrom, "rb"))
@@ -44,7 +39,33 @@ local function copyFile(pathFrom, pathTo)
 	file:close()
 end
 
-pp.metaEnvironment.DEBUG = debugMode
+--
+-- Parse args
+--
+
+for _, arg in ipairs(arg) do
+	if arg == "--dev" then
+		devMode = true
+	else
+		error("Unknown argument '"..arg.."'.")
+	end
+end
+
+--
+-- Metaprogram stuff
+--
+
+local metaEnv = pp.metaEnvironment
+
+metaEnv.DEV = devMode
+
+local chunk = loadfile"build/meta.lua"
+setfenv(chunk, metaEnv)
+chunk()
+
+--
+-- Build!
+--
 
 lfs.mkdir("srcgen")
 
