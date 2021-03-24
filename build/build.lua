@@ -23,7 +23,8 @@ local DIR_HERE = debug.getinfo(1, "S").source:match"^@(.+)":gsub("\\", "/"):gsub
 local pp  = require"build.preprocess"
 local lfs = require"lfs"
 
-local devMode = false
+local devMode  = false
+local testMode = false
 
 --
 -- Functions
@@ -46,6 +47,11 @@ end
 for _, arg in ipairs(arg) do
 	if arg == "--dev" then
 		devMode = true
+
+	elseif arg == "--test" then
+		devMode  = true
+		testMode = true
+
 	else
 		error("Unknown argument '"..arg.."'.")
 	end
@@ -57,7 +63,8 @@ end
 
 local metaEnv = pp.metaEnvironment
 
-metaEnv.DEV = devMode
+metaEnv.DEV  = devMode
+metaEnv.TEST = testMode
 
 local chunk = loadfile"build/meta.lua"
 setfenv(chunk, metaEnv)

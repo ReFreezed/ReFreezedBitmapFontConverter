@@ -6,7 +6,7 @@ colored=true
 [out]
 fileImage=<basename>.png
 fileDescriptor=<basename>.bmfont
-glyphSpacing=1 1
+glyphSpacing=2 2
 custom.lineHeight=1.2
 
 [out]

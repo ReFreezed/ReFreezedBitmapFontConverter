@@ -14,6 +14,8 @@
 
 --============================================================]]
 
+_G.F = string.format
+
 
 
 function _G.templateToLua(template, values)
@@ -44,6 +46,9 @@ function _G.GET_PIXEL(imageDataIdent, rIdent,gIdent,bIdent,aIdent, x,y, reuseExi
 		if aIdent then  __LUA(templateToLua("local $a = $imageData_pointer[$i4] * $byteToFloat\n", values))  end
 
 	elseif ((rIdent and 1 or 0) + (gIdent and 1 or 0) + (bIdent and 1 or 0) + (aIdent and 1 or 0)) == 1 then
+		if type(x) == "number" then  x = toLua(x)  end
+		if type(y) == "number" then  y = toLua(y)  end
+
 		local values = {
 			imageData = imageDataIdent,
 			r = rIdent, g = gIdent, b = bIdent, a = aIdent,
@@ -51,10 +56,11 @@ function _G.GET_PIXEL(imageDataIdent, rIdent,gIdent,bIdent,aIdent, x,y, reuseExi
 			byteToFloat = toLua(1/255),
 		}
 
-		if rIdent then  __LUA(templateToLua("local $r = $imageData_pointer[4 * (($y)*$imageData_w + ($x))    ] * $byteToFloat\n", values))  end
-		if gIdent then  __LUA(templateToLua("local $g = $imageData_pointer[4 * (($y)*$imageData_w + ($x)) + 1] * $byteToFloat\n", values))  end
-		if bIdent then  __LUA(templateToLua("local $b = $imageData_pointer[4 * (($y)*$imageData_w + ($x)) + 2] * $byteToFloat\n", values))  end
-		if aIdent then  __LUA(templateToLua("local $a = $imageData_pointer[4 * (($y)*$imageData_w + ($x)) + 3] * $byteToFloat\n", values))  end
+		if     rIdent then  __LUA(templateToLua("local $r = $imageData_pointer[4 * (($y)*$imageData_w + ($x))    ] * $byteToFloat\n", values))
+		elseif gIdent then  __LUA(templateToLua("local $g = $imageData_pointer[4 * (($y)*$imageData_w + ($x)) + 1] * $byteToFloat\n", values))
+		elseif bIdent then  __LUA(templateToLua("local $b = $imageData_pointer[4 * (($y)*$imageData_w + ($x)) + 2] * $byteToFloat\n", values))
+		elseif aIdent then  __LUA(templateToLua("local $a = $imageData_pointer[4 * (($y)*$imageData_w + ($x)) + 3] * $byteToFloat\n", values))
+		end
 
 	else
 		if type(x) == "number" then  x = toLua(x)  end
@@ -77,19 +83,41 @@ function _G.GET_PIXEL(imageDataIdent, rIdent,gIdent,bIdent,aIdent, x,y, reuseExi
 	end
 end
 
--- SET_PIXEL( imageDataIdent, xCodeOrCoord,yCodeOrCoord, rIdent,gIdent,bIdent,aIdent [, reuseExistingIndex=false ] )
-function _G.SET_PIXEL(imageDataIdent, x,y, rIdent,gIdent,bIdent,aIdent, reuseExistingIndex)
+-- SET_PIXEL( imageDataIdent, xCodeOrCoord,yCodeOrCoord, rCodeOrValue=nil,gCodeOrValue=nil,bCodeOrValue=nil,aCodeOrValue=nil [, reuseExistingIndex=false ] )
+function _G.SET_PIXEL(imageDataIdent, x,y, r,g,b,a, reuseExistingIndex)
+	if type(r) == "number" then  r = F("%d", math.floor(r*255+.5))  elseif r then  r = F("math.floor((%s)*255+.5)", r)  end
+	if type(g) == "number" then  g = F("%d", math.floor(g*255+.5))  elseif g then  g = F("math.floor((%s)*255+.5)", g)  end
+	if type(b) == "number" then  b = F("%d", math.floor(b*255+.5))  elseif b then  b = F("math.floor((%s)*255+.5)", b)  end
+	if type(a) == "number" then  a = F("%d", math.floor(a*255+.5))  elseif a then  a = F("math.floor((%s)*255+.5)", a)  end
+
 	if y == 0 and type(x) == "number" then
 		local values = {
 			imageData = imageDataIdent,
-			r = rIdent, g = gIdent, b = bIdent, a = aIdent,
+			r = r, g = g, b = b, a = a,
 			i1 = toLua(4*x), i2=toLua(4*x+1), i3=toLua(4*x+2), i4=toLua(4*x+3),
 		}
 
-		__LUA(templateToLua("$imageData_pointer[$i1] = math.floor(($r)*255+.5)\n", values))
-		__LUA(templateToLua("$imageData_pointer[$i2] = math.floor(($g)*255+.5)\n", values))
-		__LUA(templateToLua("$imageData_pointer[$i3] = math.floor(($b)*255+.5)\n", values))
-		__LUA(templateToLua("$imageData_pointer[$i4] = math.floor(($a)*255+.5)\n", values))
+		if r then  __LUA(templateToLua("$imageData_pointer[$i1] = $r\n", values))  end
+		if g then  __LUA(templateToLua("$imageData_pointer[$i2] = $g\n", values))  end
+		if b then  __LUA(templateToLua("$imageData_pointer[$i3] = $b\n", values))  end
+		if a then  __LUA(templateToLua("$imageData_pointer[$i4] = $a\n", values))  end
+
+	elseif ((r and 1 or 0) + (g and 1 or 0) + (b and 1 or 0) + (a and 1 or 0)) == 1 then
+		if type(x) == "number" then  x = toLua(x)  end
+		if type(y) == "number" then  y = toLua(y)  end
+
+		local values = {
+			imageData = imageDataIdent,
+			r = r, g = g, b = b, a = a,
+			x = x, y = y,
+			byteToFloat = toLua(1/255),
+		}
+
+		if     r then  __LUA(templateToLua("$imageData_pointer[4 * (($y)*$imageData_w + ($x))    ] = $r\n", values))
+		elseif g then  __LUA(templateToLua("$imageData_pointer[4 * (($y)*$imageData_w + ($x)) + 1] = $g\n", values))
+		elseif b then  __LUA(templateToLua("$imageData_pointer[4 * (($y)*$imageData_w + ($x)) + 2] = $b\n", values))
+		elseif a then  __LUA(templateToLua("$imageData_pointer[4 * (($y)*$imageData_w + ($x)) + 3] = $a\n", values))
+		end
 
 	else
 		if type(x) == "number" then  x = toLua(x)  end
@@ -97,17 +125,17 @@ function _G.SET_PIXEL(imageDataIdent, x,y, rIdent,gIdent,bIdent,aIdent, reuseExi
 
 		local values = {
 			imageData = imageDataIdent,
-			r = rIdent, g = gIdent, b = bIdent, a = aIdent,
+			r = r, g = g, b = b, a = a,
 			x = x, y = y,
 		}
 
 		if not reuseExistingIndex then
 			__LUA(templateToLua("local $imageData_cIndex = 4 * (($y)*$imageData_w + ($x))\n", values))
 		end
-		__LUA(templateToLua("$imageData_pointer[$imageData_cIndex  ] = math.floor(($r)*255+.5)\n", values))
-		__LUA(templateToLua("$imageData_pointer[$imageData_cIndex+1] = math.floor(($g)*255+.5)\n", values))
-		__LUA(templateToLua("$imageData_pointer[$imageData_cIndex+2] = math.floor(($b)*255+.5)\n", values))
-		__LUA(templateToLua("$imageData_pointer[$imageData_cIndex+3] = math.floor(($a)*255+.5)\n", values))
+		if r then  __LUA(templateToLua("$imageData_pointer[$imageData_cIndex  ] = $r\n", values))  end
+		if g then  __LUA(templateToLua("$imageData_pointer[$imageData_cIndex+1] = $g\n", values))  end
+		if b then  __LUA(templateToLua("$imageData_pointer[$imageData_cIndex+2] = $b\n", values))  end
+		if a then  __LUA(templateToLua("$imageData_pointer[$imageData_cIndex+3] = $a\n", values))  end
 	end
 end
 

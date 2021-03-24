@@ -22,6 +22,10 @@ local CMD_HELP = [=[
 		Relative --textfile paths will be relative to CWD, unlike the 'textFile' input descriptor field.
 ]=]
 
+
+
+!if not TEST then
+
 !local CMD_TITLE     = "ReFreezed Bitmap Font converter"
 !local CMD_SEPARATOR = string.rep("-", #CMD_TITLE)
 
@@ -77,8 +81,8 @@ local function OutputDescriptor()
 		glyphPaddingD = 0,
 		glyphPaddingL = 0,
 
-		glyphSpacingH = 1,
-		glyphSpacingV = 1,
+		glyphSpacingH = 0,
+		glyphSpacingV = 0,
 
 		outlineWidth = 0,
 		outlineColor = {0,0,0,1},
@@ -88,6 +92,9 @@ local function OutputDescriptor()
 
 		pathImage      = "",
 		pathDescriptor = "",
+
+		couldPack = false,
+		pack      = false,
 	}
 end
 
@@ -152,7 +159,7 @@ function love.run()
 			out_directory = normalizePath(out_directory)
 			i = i+2
 
-		elseif args[i] == "--maxwidth" then
+		elseif args[i] == "--maxwidth" then -- @Incomplete @Robustness: Maybe replace this with --maxsize? At least limit the height in some way!
 			local v           = args[i+1] or errorLine("Argument: Missing number after '%s'.", args[i])
 			out_imageMaxWidth = tonumber(out_imageMaxWidth:match"^%-?%d+$") or errorLine("Argument: '%s' is not an integer.", v)
 			if out_imageMaxWidth < 1 then
@@ -779,6 +786,10 @@ function love.run()
 			fileError(rbmfFile, "No glyphs to export.")
 		end
 
+		table.sort(glyphs, function(a, b)
+			return a.cp < b.cp
+		end)
+
 		--
 		-- Edit input image
 		--
@@ -802,6 +813,7 @@ function love.run()
 					print("measure pre ", glyphInfo.cp, glyphInfo.inX2-glyphInfo.inX1)
 					glyphInfo.inX1 = glyphInfo.inX1 + innerX1 - outerX1
 					glyphInfo.inX2 = glyphInfo.inX2 + innerX2 - outerX2
+					glyphInfo.inW  = glyphInfo.inX2 - glyphInfo.inX1 + 1
 					print("measure post", glyphInfo.cp, glyphInfo.inX2-glyphInfo.inX1)
 					--]]
 
@@ -814,51 +826,74 @@ function love.run()
 		-- Write output images and descriptors
 		--
 		for _, outDescr in ipairs(rbmfFile.outputDescriptors) do
-			-- @Incomplete: Put glyphs in separate channels when rbmfFile.isColored is false.
 			-- @Feature: Automatic kerning calculations?
 
-			-- Figure out how tall the output image should be.
+			outDescr.couldPack = not (rbmfFile.isColored or outDescr.outlineWidth > 0)
+			outDescr.pack      = false--outDescr.couldPack -- LÖVE does not seem to support packing yet as of 11.3.
+
+			-- Figure out how big the output image should be.
 			local out_imageWidth  = 0
 			local out_imageHeight = 0
-			local x               = 1/0
-			local y               = -(in_lineHeight + 2*outDescr.outlineWidth + outDescr.glyphPaddingU+outDescr.glyphPaddingD)
 
-			for _, glyphInfo in ipairs(glyphs) do
-				local wPadded = glyphInfo.inW + 2*outDescr.outlineWidth + outDescr.glyphPaddingL + outDescr.glyphPaddingR
-				local hPadded = glyphInfo.inH + 2*outDescr.outlineWidth + outDescr.glyphPaddingU + outDescr.glyphPaddingD
+			do
+				local x  = 1/0
+				local y  = -(in_lineHeight + 2*outDescr.outlineWidth + outDescr.glyphPaddingU+outDescr.glyphPaddingD)
+				local xs = {x, x, x, x}
+				local ys = {y, y, y, y}
 
-				if x+wPadded-1 > out_imageMaxWidth-outDescr.glyphSpacingH then
-					x               = outDescr.glyphSpacingH
-					y               = y + hPadded + outDescr.glyphSpacingV
-					out_imageHeight = out_imageHeight + hPadded + outDescr.glyphSpacingV
+				local function isPositionEarlier(x1,y1, x2,y2)
+					if y1 < y2 then  return true  end
+					return (x1 < x2)
 				end
 
-				glyphInfo.outW = wPadded
-				glyphInfo.outH = hPadded
-				glyphInfo.outX = x
-				glyphInfo.outY = y
+				for _, glyphInfo in ipairs(glyphs) do
+					local wPadded = glyphInfo.inW + 2*outDescr.outlineWidth + outDescr.glyphPaddingL + outDescr.glyphPaddingR
+					local hPadded = glyphInfo.inH + 2*outDescr.outlineWidth + outDescr.glyphPaddingU + outDescr.glyphPaddingD
 
-				out_imageWidth = math.max(out_imageWidth, x+wPadded)
-				x              = x + wPadded + outDescr.glyphSpacingH
+					local channel = 1
+
+					if outDescr.pack then
+						if isPositionEarlier(xs[2],ys[2], xs[channel],ys[channel]) then  channel = 2  end
+						if isPositionEarlier(xs[3],ys[3], xs[channel],ys[channel]) then  channel = 3  end
+						if isPositionEarlier(xs[4],ys[4], xs[channel],ys[channel]) then  channel = 4  end
+					end
+
+					if xs[channel]+wPadded-1 > out_imageMaxWidth-outDescr.glyphSpacingH then
+						xs[channel]     = outDescr.glyphSpacingH
+						ys[channel]     = ys[channel] + hPadded + outDescr.glyphSpacingV
+						out_imageHeight = math.max(out_imageHeight, ys[channel]+hPadded)
+					end
+
+					glyphInfo.outChannel = channel
+
+					glyphInfo.outW = wPadded
+					glyphInfo.outH = hPadded
+					glyphInfo.outX = xs[channel]
+					glyphInfo.outY = ys[channel]
+
+					out_imageWidth = math.max(out_imageWidth, xs[channel]+wPadded)
+					xs[channel]    = xs[channel] + wPadded + outDescr.glyphSpacingH
+				end
+
+				out_imageWidth  = out_imageWidth  + outDescr.glyphSpacingH
+				out_imageHeight = out_imageHeight + outDescr.glyphSpacingV
+
+				assert(out_imageWidth  > 0)
+				assert(out_imageHeight > 0)
+
+				-- Even numbers are safer than odd, yo.
+				out_imageWidth  = math.ceil(out_imageWidth  / 2) * 2
+				out_imageHeight = math.ceil(out_imageHeight / 2) * 2
 			end
-
-			out_imageWidth  = out_imageWidth  + outDescr.glyphSpacingH
-			out_imageHeight = out_imageHeight + outDescr.glyphSpacingV
-
-			assert(out_imageWidth  > 0)
-			assert(out_imageHeight > 0)
-
-			-- Even numbers are safer than odd, yo.
-			out_imageWidth  = math.ceil(out_imageWidth  / 2) * 2
-			out_imageHeight = math.ceil(out_imageHeight / 2) * 2
 
 			local out_imageData        = LI.newImageData(out_imageWidth, out_imageHeight)
 			local out_descriptorBuffer = {}
 
 			table.insert(out_descriptorBuffer, F(
-				'info face="" size=%d bold=0 italic=0 charset="" unicode=1 stretchH=100 smooth=0 aa=0 padding=0,0,0,0 spacing=%d,%d outline=%d',
+				'info face="" size=%d bold=0 italic=0 charset="" unicode=1 stretchH=100 smooth=0 aa=0 padding=%d,%d,%d,%d spacing=%d,%d outline=%d',
 				in_lineHeight, -- size
-				outDescr.glyphSpacingH,outDescr.glyphSpacingV, -- spacing
+				outDescr.glyphPaddingU, outDescr.glyphPaddingR, outDescr.glyphPaddingD, outDescr.glyphPaddingL, -- padding
+				outDescr.glyphSpacingH, outDescr.glyphSpacingV, -- spacing
 				outDescr.outlineWidth -- outline
 			))
 			for _, k in ipairs(outDescr.customValues) do
@@ -870,10 +905,11 @@ function love.run()
 
 			table.insert(out_descriptorBuffer, F(
 				-- @Incomplete: Support multiple pages when needed for big font sizes.
-				'common lineHeight=%d base=%d scaleW=%d scaleH=%d pages=1 packed=0 alphaChnl=0 redChnl=0 greenChnl=0 blueChnl=0\n',
+				'common lineHeight=%d base=%d scaleW=%d scaleH=%d pages=1 packed=%d alphaChnl=0 redChnl=0 greenChnl=0 blueChnl=0\n',
 				in_lineHeight, -- lineHeight
 				in_lineHeight, -- base
-				out_imageWidth, out_imageHeight -- scaleW, scaleH
+				out_imageWidth, out_imageHeight, -- scaleW, scaleH
+				(outDescr.pack and 1 or 0) -- packed
 			))
 
 			table.insert(out_descriptorBuffer, F('page id=0 file="%s"\n', outDescr.filenameImage))
@@ -881,31 +917,93 @@ function love.run()
 			-- Write glyphs.
 			table.insert(out_descriptorBuffer, F('chars count=%d\n', #glyphs))
 
-			-- out_imageData:mapPixel(function()  return 1, 0, 0, 1  end) -- DEBUG: Show areas we don't paste glyphs in.
+			-- out_imageData:mapPixel(function(x,y, r,g,b,a)  return 1, 0, 0, 1  end) -- DEBUG: Show areas we don't paste glyphs in.
+
+			if outDescr.pack then
+				!GET_IMAGE_DATA_POINTER `in_imageData`
+				!GET_IMAGE_DATA_POINTER `out_imageData`
+
+				for _, glyphInfo in ipairs(glyphs) do
+					local outX1 = glyphInfo.outX + outDescr.glyphPaddingL -- Note: Packed glyphs have no outlines.
+					local outY1 = glyphInfo.outY + outDescr.glyphPaddingU
+					local outX2 = outX1 + glyphInfo.inW - 1
+					local outY2 = outY1 + glyphInfo.inH - 1
+
+					local dx = glyphInfo.inX1 - outX1
+					local dy = glyphInfo.inY1 - outY1
+
+					if glyphInfo.outChannel == 1 then
+						for outY = outY1, outY2 do
+							for outX = outX1, outX2 do
+								!GET_PIXEL(`in_imageData`, nil,nil,nil,`a`, `outX+dx`,`outY+dy`)
+								!SET_PIXEL(`out_imageData`, `outX`,`outY`, `a`,nil,nil,nil)
+							end
+						end
+					elseif glyphInfo.outChannel == 2 then
+						for outY = outY1, outY2 do
+							for outX = outX1, outX2 do
+								!GET_PIXEL(`in_imageData`, nil,nil,nil,`a`, `outX+dx`,`outY+dy`)
+								!SET_PIXEL(`out_imageData`, `outX`,`outY`, nil,`a`,nil,nil)
+							end
+						end
+					elseif glyphInfo.outChannel == 3 then
+						for outY = outY1, outY2 do
+							for outX = outX1, outX2 do
+								!GET_PIXEL(`in_imageData`, nil,nil,nil,`a`, `outX+dx`,`outY+dy`)
+								!SET_PIXEL(`out_imageData`, `outX`,`outY`, nil,nil,`a`,nil)
+							end
+						end
+					else--if glyphInfo.outChannel == 4 then
+						for outY = outY1, outY2 do
+							for outX = outX1, outX2 do
+								!GET_PIXEL(`in_imageData`, nil,nil,nil,`a`, `outX+dx`,`outY+dy`)
+								!SET_PIXEL(`out_imageData`, `outX`,`outY`, nil,nil,nil,`a`)
+							end
+						end
+					end
+				end
+
+			else
+				for _, glyphInfo in ipairs(glyphs) do
+					out_imageData:paste(
+						in_imageData,
+						glyphInfo.outX + outDescr.glyphPaddingL + outDescr.outlineWidth, -- dx
+						glyphInfo.outY + outDescr.glyphPaddingU + outDescr.outlineWidth, -- dy
+						glyphInfo.inX1, -- sx
+						glyphInfo.inY1, -- sy
+						glyphInfo.inW,  -- sw
+						glyphInfo.inH   -- sh
+					)
+				end
+
+				if outDescr.couldPack then
+					!GET_IMAGE_DATA_POINTER `out_imageData`
+
+					!MAP_PIXEL(`out_imageData`, `x`,`y`)
+						!GET_PIXEL(`out_imageData`, nil,nil,nil,`a`, `x`,`y`)
+						!SET_PIXEL(`out_imageData`, `x`,`y`, 1,1,1,`a`)
+					!MAP_PIXEL_END()
+				end
+			end
+
+			-- out_imageData:mapPixel(function(x,y, r,g,b,a)  return r, g, b, 1  end) -- DEBUG: Show as fully opaque / discard (glyphs in) alpha channel.
 
 			for _, glyphInfo in ipairs(glyphs) do
-				out_imageData:paste(
-					in_imageData,
-					glyphInfo.outX+outDescr.glyphPaddingL+outDescr.outlineWidth,
-					glyphInfo.outY+outDescr.glyphPaddingU+outDescr.outlineWidth,
-					glyphInfo.inX1,
-					glyphInfo.inY1,
-					glyphInfo.inW,
-					glyphInfo.inH
-				)
-
 				-- Note that the outlines will overlap when text is rendered.  @Incomplete: This should probably be a setting.
 				table.insert(out_descriptorBuffer, F(
-					'char id=%d x=%d y=%d width=%d height=%d xoffset=0 yoffset=0 xadvance=%d page=0 chnl=15\n',
+					'char id=%d x=%d y=%d width=%d height=%d xoffset=0 yoffset=0 xadvance=%d page=0 chnl=%d\n',
 					glyphInfo.cp, -- id
 					glyphInfo.outX, glyphInfo.outY, -- x, y
 					glyphInfo.outW, glyphInfo.outH, -- width, height
-					glyphInfo.inW+outDescr.glyphSpacingH -- xadvance
+					glyphInfo.inW + outDescr.glyphSpacingH, -- xadvance
+					(outDescr.pack and 2^(glyphInfo.outChannel-1) or 15) -- chnl
 				))
 			end
 
 			-- Add glyph outlines.
 			if outDescr.outlineWidth > 0 then
+				assert(not outDescr.pack)
+
 				local w, h              = out_imageData:getDimensions()
 				local readonlyImageData = LI.newImageData(w, h)
 
@@ -915,11 +1013,11 @@ function love.run()
 
 				readonlyImageData:paste(out_imageData, 0,0, 0,0, w,h)
 
-				local min = math.min
-				local max = math.max
-
 				!GET_IMAGE_DATA_POINTER `out_imageData`
 				!GET_IMAGE_DATA_POINTER `readonlyImageData`
+
+				local min = math.min
+				local max = math.max
 
 				if outlineWidth == 1 then
 					!MAP_PIXEL(`out_imageData`, `x`,`y`)
@@ -1007,6 +1105,63 @@ function love.run()
 				end
 			end
 
+			-- Try to ensure linear interpolation will work properly when rendering in-game.  @Incomplete: Maybe there should be a setting to skip this step if it's not of importance.
+			if not outDescr.couldPack and outDescr.outlineWidth == 0 then
+				local w, h = out_imageData:getDimensions()
+
+				!GET_IMAGE_DATA_POINTER `out_imageData`
+
+				local min = math.min
+				local max = math.max
+
+				!MAP_PIXEL(`out_imageData`, `x`,`y`)
+					!GET_PIXEL(`out_imageData`, nil,nil,nil,`a`, `x`,`y`)
+
+					if a == 0 then
+						!(
+						-- Note: We don't need to use a readonlyImageData as we only write to transparent
+						-- pixels and we only read/use values from non-transparent pixels.
+						GET_PIXEL(`out_imageData`, nil,nil,nil,`a1`, `    x        `,`max(y-1, 0  )`)
+						GET_PIXEL(`out_imageData`, nil,nil,nil,`a2`, `min(x+1, w-1)`,`max(y-1, 0  )`)
+						GET_PIXEL(`out_imageData`, nil,nil,nil,`a3`, `min(x+1, w-1)`,`    y        `)
+						GET_PIXEL(`out_imageData`, nil,nil,nil,`a4`, `min(x+1, w-1)`,`min(y+1, h-1)`)
+						GET_PIXEL(`out_imageData`, nil,nil,nil,`a5`, `    x        `,`min(y+1, h-1)`)
+						GET_PIXEL(`out_imageData`, nil,nil,nil,`a6`, `max(x-1, 0  )`,`min(y+1, h-1)`)
+						GET_PIXEL(`out_imageData`, nil,nil,nil,`a7`, `max(x-1, 0  )`,`    y        `)
+						GET_PIXEL(`out_imageData`, nil,nil,nil,`a8`, `max(x-1, 0  )`,`max(y-1, 0  )`)
+						)
+
+						local weightInverted = 1 / (a1 + a2 + a3 + a4 + a5 + a6 + a7 + a8)
+
+						if weightInverted < 1/0 then
+							!(
+							-- Note: We don't need to use a readonlyImageData as we only write to transparent
+							-- pixels and we only read/use values from non-transparent pixels.
+							GET_PIXEL(`out_imageData`, `r1`,`g1`,`b1`,nil, `    x        `,`max(y-1, 0  )`)
+							GET_PIXEL(`out_imageData`, `r2`,`g2`,`b2`,nil, `min(x+1, w-1)`,`max(y-1, 0  )`)
+							GET_PIXEL(`out_imageData`, `r3`,`g3`,`b3`,nil, `min(x+1, w-1)`,`    y        `)
+							GET_PIXEL(`out_imageData`, `r4`,`g4`,`b4`,nil, `min(x+1, w-1)`,`min(y+1, h-1)`)
+							GET_PIXEL(`out_imageData`, `r5`,`g5`,`b5`,nil, `    x        `,`min(y+1, h-1)`)
+							GET_PIXEL(`out_imageData`, `r6`,`g6`,`b6`,nil, `max(x-1, 0  )`,`min(y+1, h-1)`)
+							GET_PIXEL(`out_imageData`, `r7`,`g7`,`b7`,nil, `max(x-1, 0  )`,`    y        `)
+							GET_PIXEL(`out_imageData`, `r8`,`g8`,`b8`,nil, `max(x-1, 0  )`,`max(y-1, 0  )`)
+							)
+
+							local r = (r1*a1 + r2*a2 + r3*a3 + r4*a4 + r5*a5 + r6*a6 + r7*a7 + r8*a8) * weightInverted
+							local g = (g1*a1 + g2*a2 + g3*a3 + g4*a4 + g5*a5 + g6*a6 + g7*a7 + g8*a8) * weightInverted
+							local b = (b1*a1 + b2*a2 + b3*a3 + b4*a4 + b5*a5 + b6*a6 + b7*a7 + b8*a8) * weightInverted
+
+							!SET_PIXEL(`out_imageData`, `x`,`y`, `r`,`g`,`b`,`a`)
+
+						else
+							!SET_PIXEL(`out_imageData`, `x`,`y`, 0,0,0,`a`) -- Stomp unimportant pixels for hopefully better PNG compression.
+						end
+					end
+				!MAP_PIXEL_END()
+			end
+
+			-- out_imageData:mapPixel(function(x,y, r,g,b,a)  return r, g, b, 1  end) -- DEBUG: Show as fully opaque.
+
 			-- Write kernings.
 			local kerningPairs = {}
 
@@ -1089,5 +1244,34 @@ function love.run()
 		os.exit(0)
 	end
 end
+
+
+
+!else--if TEST then
+
+function love.load()
+	-- love.graphics.setDefaultFilter("nearest")
+
+	local path = "temp/smallPixel.bmfont"
+	-- local path = "temp/smallPixel_outline.bmfont"
+	-- local path = "temp/vector.bmfont"
+	-- local path = "temp/vector_outline.bmfont"
+	_G.theFont = love.graphics.newFont(path)
+end
+
+function love.keypressed(key)
+	if key == "escape" then
+		love.event.quit()
+	end
+end
+
+function love.draw()
+	love.graphics.clear(.25, .25, .25, 1)
+	love.graphics.setFont(theFont)
+	love.graphics.scale(4)
+	love.graphics.print("Hello, world!", 5, 5)
+end
+
+!end
 
 

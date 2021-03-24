@@ -258,14 +258,14 @@ end
 
 
 
--- x1, x2, y1, y2 = getImageContentBounds( image, x1, y1, x2, y2, alphaThreshold )
+-- x1, x2, y1, y2 = getImageContentBounds( imageData, x1, y1, x2, y2, alphaThreshold )
 -- Returns nil if the whole area is empty.
-function _G.getImageContentBounds(image, x1, y1, x2, y2, threshold)
+function _G.getImageContentBounds(imageData, x1, y1, x2, y2, threshold)
 	local hasContent = false
 
 	for y = y1, y2 do
 		for x = x1, x2 do
-			local _, _, _, a = image:getPixel(x, y)
+			local _, _, _, a = imageData:getPixel(x, y) -- @Speed
 
 			if a >= threshold then
 				hasContent = true
@@ -285,7 +285,7 @@ function _G.getImageContentBounds(image, x1, y1, x2, y2, threshold)
 
 	for y = y1, y2 do
 		for x = x1, x2 do
-			local _, _, _, a = image:getPixel(x, y)
+			local _, _, _, a = imageData:getPixel(x, y) -- @Speed
 
 			if a >= threshold then
 				cx1 = math.min(cx1, x)
