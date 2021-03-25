@@ -16,12 +16,12 @@
 	fileError, fileWarning, fileAssert
 	getDirectoryItems
 	getFileContents, isFile, eachLine
-	getFilename, getDirectory, getBasename, appendPath
+	getFilename, getDirectory, getBasename
 	getIconCodepoint, getIcons, getIconCount, setIconCodepoint, isCodepointInPua
 	getImageContentBounds
 	getUnicodeBlockName
 	normalizePath
-	parseBool, parseNumber, parseInt
+	parseBool, parseNumber, parseInt*, parseUint*, parseUint*Sides
 	print, printf
 	processPathTemplate
 	S
@@ -180,14 +180,6 @@ end
 function _G.getBasename(filename)
 	local basename = filename:gsub("%..*$", "")
 	return basename ~= "" and basename or filename
-end
-
-function _G.appendPath(pathBase, pathToAppend)
-	return (pathBase     == "" and pathToAppend)
-	    or (pathToAppend == "" and pathBase)
-	    or (pathToAppend:find"^/"   and pathToAppend)
-	    or (pathToAppend:find"^%a:" and pathToAppend)
-	    or (pathBase:find"/$" and pathBase..pathToAppend or pathBase.."/"..pathToAppend)
 end
 
 
@@ -410,6 +402,39 @@ function _G.parseUint4(s)
 		return false, F("Expected 4 unsigned integers - got '%s'.", s)
 	end
 	return true, tonumber(nStr1), tonumber(nStr2), tonumber(nStr3), tonumber(nStr4)
+end
+
+-- vertical, horizontal = parseUint2Sides "vertical horizontal"
+-- vertical, horizontal = parseUint2Sides "verticalHorizontal"
+function _G.parseUint2Sides(s)
+	local nStrV, nStrH = s:match"^(%d+) +(%d+)$"
+	if not nStrV then
+		nStrV = s:match"^(%d+)$"
+		if not nStrV then
+			return false, F("Expected 1 or 2 unsigned integers - got '%s'.", s)
+		end
+	end
+	return true, tonumber(nStrV), tonumber(nStrH or nStrV)
+end
+-- up, right, down, left = parseUint4Sides "up right down left"
+-- up, right, down, left = parseUint4Sides "up rightLeft down"
+-- up, right, down, left = parseUint4Sides "upDown leftRight"
+-- up, right, down, left = parseUint4Sides "upRightDownLeft"
+function _G.parseUint4Sides(s)
+	local nStrU, nStrR, nStrB, nStrL = s:match"^(%d+) +(%d+) +(%d+) +(%d+)$"
+	if not nStrU then
+		nStrU, nStrR, nStrB = s:match"^(%d+) +(%d+) +(%d+)$"
+		if not nStrU then
+			nStrU, nStrR = s:match"^(%d+) +(%d+)$"
+			if not nStrU then
+				nStrU = s:match"^(%d+)$"
+				if not nStrU then
+					return false, F("Expected 4, 3, 2 or 1 unsigned integers - got '%s'.", s)
+				end
+			end
+		end
+	end
+	return true, tonumber(nStrU), tonumber(nStrR or nStrU), tonumber(nStrB or nStrU), tonumber(nStrL or nStrR or nStrU)
 end
 
 

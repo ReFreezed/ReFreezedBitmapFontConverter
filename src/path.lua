@@ -87,10 +87,12 @@ end
 -- Note: Network paths are not supported.
 -- Paths like "C:foo.txt" are assumed to be mistyped and become "C:/foo.txt".
 function Path.parse(path, referencePathObj)
-	if type(referencePathObj) == "string" then
-		referencePathObj = Path.parse(referencePathObj)
-	else
+	if type(referencePathObj) ~= "string" then
 		referencePathObj = referencePathObj or Path.RELATIVE
+	elseif referencePathObj == "" or referencePathObj == "." then
+		referencePathObj = Path.RELATIVE
+	else
+		referencePathObj = Path.parse(referencePathObj)
 	end
 
 	local pathObj = Path()

@@ -84,6 +84,9 @@ local function OutputDescriptor()
 		glyphSpacingH = 0,
 		glyphSpacingV = 0,
 
+		imagePaddingH = 0,
+		imagePaddingV = 0,
+
 		outlineWidth = 0,
 		outlineColor = {0,0,0,1},
 
@@ -351,16 +354,19 @@ function love.run()
 				if k == "fileImage" then
 					local path                    = normalizePath(v ~= "" and v or fileError(rbmfFile, "Path cannot be empty."))
 					currentOutDescr.filenameImage = processPathTemplate(rbmfFile, path)
-					currentOutDescr.pathImage     = appendPath(out_directory, currentOutDescr.filenameImage)
+					currentOutDescr.pathImage     = Path(currentOutDescr.filenameImage, out_directory):toString()
 				elseif k == "fileDescriptor" then
 					local path                         = normalizePath(v ~= "" and v or fileError(rbmfFile, "Path cannot be empty."))
 					currentOutDescr.filenameDescriptor = processPathTemplate(rbmfFile, path)
-					currentOutDescr.pathDescriptor     = appendPath(out_directory, currentOutDescr.filenameDescriptor)
+					currentOutDescr.pathDescriptor     = Path(currentOutDescr.filenameDescriptor, out_directory):toString()
 
 				elseif k == "glyphPadding" then
-					currentOutDescr.glyphPaddingU, currentOutDescr.glyphPaddingR, currentOutDescr.glyphPaddingD, currentOutDescr.glyphPaddingL = fileAssert(rbmfFile, parseUint4(v))
+					currentOutDescr.glyphPaddingU, currentOutDescr.glyphPaddingR, currentOutDescr.glyphPaddingD, currentOutDescr.glyphPaddingL = fileAssert(rbmfFile, parseUint4Sides(v))
 				elseif k == "glyphSpacing" then
-					currentOutDescr.glyphSpacingH, currentOutDescr.glyphSpacingV = fileAssert(rbmfFile, parseUint2(v))
+					currentOutDescr.glyphSpacingV, currentOutDescr.glyphSpacingH = fileAssert(rbmfFile, parseUint2Sides(v))
+
+				elseif k == "imagePadding" then
+					currentOutDescr.imagePaddingV, currentOutDescr.imagePaddingH = fileAssert(rbmfFile, parseUint2Sides(v))
 
 				elseif k == "outlineWidth" then
 					currentOutDescr.outlineWidth = fileAssert(rbmfFile, parseUint(v))
@@ -821,13 +827,13 @@ function love.run()
 			outDescr.couldPack = not (rbmfFile.isColored or outDescr.outlineWidth > 0)
 			outDescr.pack      = false--outDescr.couldPack -- LÖVE does not seem to support packing yet as of 11.3.
 
-			-- Figure out how big the output image should be.
+			-- Figure out how big the output image should be and the position of the glyphs.
 			local out_imageWidth  = 0
 			local out_imageHeight = 0
 
 			do
-				local x  = 1/0
-				local y  = -(in_lineHeight + 2*outDescr.outlineWidth + outDescr.glyphPaddingU+outDescr.glyphPaddingD)
+				local x  = outDescr.imagePaddingH
+				local y  = outDescr.imagePaddingV
 				local xs = {x, x, x, x}
 				local ys = {y, y, y, y}
 
@@ -848,10 +854,9 @@ function love.run()
 						if isPositionEarlier(xs[4],ys[4], xs[channel],ys[channel]) then  channel = 4  end
 					end
 
-					if xs[channel]+wPadded-1 > out_imageMaxSize-outDescr.glyphSpacingH then -- @Incomplete: Enforce out_imageMaxSize on the height as well.
-						xs[channel]     = outDescr.glyphSpacingH
-						ys[channel]     = ys[channel] + hPadded + outDescr.glyphSpacingV
-						out_imageHeight = math.max(out_imageHeight, ys[channel]+hPadded)
+					if xs[channel]+wPadded-1 > out_imageMaxSize-outDescr.imagePaddingH then -- @Incomplete: Enforce out_imageMaxSize on the height as well.
+						xs[channel] = outDescr.imagePaddingH
+						ys[channel] = ys[channel] + hPadded + outDescr.glyphSpacingV
 					end
 
 					glyphInfo.outChannel = channel
@@ -861,12 +866,14 @@ function love.run()
 					glyphInfo.outX = xs[channel]
 					glyphInfo.outY = ys[channel]
 
-					out_imageWidth = math.max(out_imageWidth, xs[channel]+wPadded)
-					xs[channel]    = xs[channel] + wPadded + outDescr.glyphSpacingH
+					out_imageWidth  = math.max(out_imageWidth,  xs[channel]+wPadded)
+					out_imageHeight = math.max(out_imageHeight, ys[channel]+hPadded)
+
+					xs[channel] = xs[channel] + wPadded + outDescr.glyphSpacingH
 				end
 
-				out_imageWidth  = out_imageWidth  + outDescr.glyphSpacingH
-				out_imageHeight = out_imageHeight + outDescr.glyphSpacingV
+				out_imageWidth  = out_imageWidth  + outDescr.imagePaddingH
+				out_imageHeight = out_imageHeight + outDescr.imagePaddingV
 
 				assert(out_imageWidth  > 0)
 				assert(out_imageHeight > 0)
