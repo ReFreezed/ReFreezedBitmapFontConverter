@@ -15,7 +15,7 @@
 	errorf, warning, errorLine
 	fileError, fileWarning, fileAssert
 	getDirectoryItems
-	getFileContents, isFile, eachFilenameInDirectory
+	getFileContents, isFile, eachLine
 	getFilename, getDirectory, getBasename, appendPath
 	getIconCodepoint, getIcons, getIconCount, setIconCodepoint, isCodepointInPua
 	getImageContentBounds
@@ -149,14 +149,14 @@ local function cmdCapture(cmd)
 	return output
 end
 
-function _G.getDirectoryItems(path)
-	local dir = getDirectory(path)
+function _G.getDirectoryItems(dir)
+	dir = Path(dir):toString()
 
 	if not connectToDirectory(dir) then
 		errorf("Cannot access directory '%s'.", dir)
 	end
 
-	return LF.getDirectoryItems(getFilename(path))
+	return LF.getDirectoryItems("")
 end
 
 
@@ -193,13 +193,7 @@ end
 
 
 function _G.normalizePath(path)
-	path = path:gsub("\\", "/"):gsub("/+$", "")
-
-	if path == "" or path:find"^%a:" then
-		path = path.."/"
-	end
-
-	return path
+	return Path(path):toString()
 end
 
 
@@ -312,25 +306,50 @@ end
 
 
 
--- contents|nil, error = getFileContents( path )
-function _G.getFileContents(path)
-	local dir = getDirectory(path)
+-- contents|nil, error = getFileContents( path|pathObj )
+function _G.getFileContents(pathObj)
+	if type(pathObj) == "string" then  pathObj = Path(pathObj)  end
+
+	local dir, filename = pathObj:getDirectoryAndFilename()
 
 	if not connectToDirectory(dir) then
 		return nil, F("Cannot access directory '%s'.", dir)
 	end
 
-	return LF.read(getFilename(path))
+	return LF.read(filename)
 end
 
 do
 	local fileInfoDummy = {}
 
 	function _G.isFile(path)
+		local dir, filename = Path(path):getDirectoryAndFilename()
 		return (
-			connectToDirectory(getDirectory(path))
-			and LF.getInfo(getFilename(path), "file", fileInfoDummy) ~= nil
+			connectToDirectory(dir)
+			and LF.getInfo(filename, "file", fileInfoDummy) ~= nil
 		)
+	end
+end
+
+-- for ln, line in eachLine( path|pathObj ) do
+function _G.eachLine(pathObj)
+	if type(pathObj) == "string" then  pathObj = Path(pathObj)  end
+
+	local dir, filename = pathObj:getDirectoryAndFilename()
+
+	if not connectToDirectory(dir) then
+		errorLine("Could not access directory '%s'.", dir)
+	end
+
+	local lineIter = LF.lines(filename)
+	local ln       = 0
+
+	return function()
+		local line = lineIter()
+		if line then
+			ln = ln + 1
+			return ln, line
+		end
 	end
 end
 

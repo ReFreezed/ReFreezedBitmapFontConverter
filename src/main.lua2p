@@ -10,10 +10,10 @@
 local CMD_HELP = [=[
 	Arguments:
 		<inputPath1> [<inputPath2> ...]
-		[--outdir   <outputDirectory>]      # Where to output files. (Default: Same directory as the input.)
-		[--icons    <outputFilePath>]       # Where to put the icons file if any icons are specified. (Default: <outputDirectory>/.fonticons)
-		[--mergeicons]                      # Merge new icons with existing icons if the icons file exists. (Default: Icon file is replaced.)
-		[--maxwidth <outputImageMaxWidth>]  # Default: 1024
+		[--outdir   <outputDirectory>]     # Where to output files. (Default: Same directory as the input.)
+		[--icons    <outputFilePath>]      # Where to put the icons file if any icons are specified. (Default: <outputDirectory>/.fonticons)
+		[--mergeicons]                     # Merge new icons with existing icons if the icons file exists. (Default: Icon file is replaced.)
+		[--maxsize  <outputImageMaxSize>]  # Default: 2048
 		[--textfile <filePath1> [--textfile <filePath2> ...]]
 
 	Notes:
@@ -113,6 +113,7 @@ function love.run()
 	package.path = "?.lua;srcgen/?.lua"
 	love.filesystem.setRequirePath(package.path)
 
+	_G.Path   = require"path"
 	_G.physfs = require"physfs"
 	_G.socket = require"socket"
 	_G.utf8   = require"utf8"
@@ -136,7 +137,7 @@ function love.run()
 	local out_directory      = ""
 	local out_iconsPath      = ""
 	local out_mergeIcons     = false
-	local out_imageMaxWidth  = 1024
+	local out_imageMaxSize   = 2048
 
 	local args = love.arg.parseGameArguments(programArguments)
 	local i    = 1
@@ -159,11 +160,11 @@ function love.run()
 			out_directory = normalizePath(out_directory)
 			i = i+2
 
-		elseif args[i] == "--maxwidth" then -- @Incomplete @Robustness: Maybe replace this with --maxsize? At least limit the height in some way!
-			local v           = args[i+1] or errorLine("Argument: Missing number after '%s'.", args[i])
-			out_imageMaxWidth = tonumber(out_imageMaxWidth:match"^%-?%d+$") or errorLine("Argument: '%s' is not an integer.", v)
-			if out_imageMaxWidth < 1 then
-				errorLine("--maxwidth must be positive.")
+		elseif args[i] == "--maxsize" then
+			local v          = args[i+1] or errorLine("Argument: Missing number after '%s'.", args[i])
+			out_imageMaxSize = tonumber(v:match"^%-?%d+$") or errorLine("Argument: '%s' is not an integer.", v)
+			if out_imageMaxSize < 1 then
+				errorLine("--maxsize must be positive.")
 			end
 			i = i+2
 
@@ -181,8 +182,12 @@ function love.run()
 			table.insert(in_textFilesForAll, normalizePath(path))
 			i = i+2
 
+		elseif args[i] == "--nogc" then
+			collectgarbage("stop")
+			i = i+1
+
 		else
-			errorLine("Argument: Unknown option %s", args[i])
+			errorLine("Argument: Unknown option '%s'.", args[i])
 		end
 	end
 
@@ -192,10 +197,10 @@ function love.run()
 
 	print!(CMD_TITLE)
 	print!(CMD_SEPARATOR)
-	print(os.date"          %Y-%m-%d %H:%M:%S")
-	printf(      "   Input: %s", table.concat(in_paths, ", "))
-	printf(      "  Output: %s", (out_directory ~= "" and out_directory or "(in input directory)"))
-	printf(      "MaxWidth: %d", out_imageMaxWidth)
+	print(os.date"         %Y-%m-%d %H:%M:%S")
+	printf(      "  Input: %s", table.concat(in_paths, ", "))
+	printf(      " Output: %s", (out_directory ~= "" and out_directory or "(in input directory)"))
+	printf(      "MaxSize: %d", out_imageMaxSize)
 	print!(CMD_SEPARATOR)
 
 	-- Collect all paths to process.
@@ -220,25 +225,16 @@ function love.run()
 	--
 	-- Load existing icons
 	--
-	if out_iconsPath == "" then
-		out_iconsPath = (out_directory ~= "" and appendPath(out_directory, ".fonticons") or "")
+	if out_iconsPath == "" and out_directory ~= "" then
+		out_iconsPath = Path(".fonticons", out_directory):toString()
 	end
 
 	if out_mergeIcons and out_iconsPath ~= "" and isFile(out_iconsPath) then
-		local dir = getDirectory(out_iconsPath)
-		local ln  = 0
-
-		if not connectToDirectory(dir) then
-			errorLine("Cannot access directory '%s'.", dir)
-		end
-
-		for line in LF.lines(getFilename(out_iconsPath)) do
-			ln = ln+1
-
+		for ln, line in eachLine(out_iconsPath) do
 			local cp, icon = line:match"^ *(%d+) +(%S+) *$"
 			cp             = tonumber(cp)
 
-			if not cp then  errorf("%s:%d: Bad line format: %s", out_iconsPath, ln, line)  end
+			if not cp then  errorLine("%s:%d: Bad line format: %s", out_iconsPath, ln, line)  end
 
 			setIconCodepoint(icon, cp)
 		end
@@ -252,21 +248,14 @@ function love.run()
 			errorLine("An input path is empty.")
 		end
 
-		if not connectToDirectory(getDirectory(rbmfFile.path)) then
-			errorLine("Could not read from directory '%s'.", getDirectory(rbmfFile.path))
-		end
+		printf("Loading RBMF: %s", rbmfFile.path)
 
 		local section         = ""
 		local sectionLines    = {}
 		local currentOutDescr = nil
 
-		local file, err = LF.newFile(getFilename(rbmfFile.path), "r")
-		if not file then
-			errorLine("Could not open file '%s'. (%s)", rbmfFile.path, err)
-		end
-
-		for line in file:lines() do
-			rbmfFile.ln = rbmfFile.ln + 1
+		for ln, line in eachLine(rbmfFile.path) do
+			rbmfFile.ln = ln
 			local k, v  = line:match"^([%a][%w_.]+)=(.*)$"
 
 			-- Empty/comment.
@@ -292,11 +281,11 @@ function love.run()
 					fileError(rbmfFile, "Duplicate section '%s'. (Previous is on line %d)", section, sectionLines[section])
 				end
 
-				sectionLines[section] = rbmfFile.ln
+				sectionLines[section] = ln
 
 				if section == "out" then
 					currentOutDescr    = OutputDescriptor()
-					currentOutDescr.ln = rbmfFile.ln
+					currentOutDescr.ln = ln
 					table.insert(rbmfFile.outputDescriptors, currentOutDescr)
 				else
 					currentOutDescr = nil
@@ -486,8 +475,6 @@ function love.run()
 				fileError(rbmfFile, "Unknown section name '%s'.")
 			end
 		end
-
-		file:close()
 		rbmfFile.ln = 0
 
 		if not rbmfFile.outputDescriptors[1] then
@@ -530,26 +517,24 @@ function love.run()
 	--
 	for _, rbmfFile in ipairs(rbmfFiles) do
 		if rbmfFile.useTextFiles then
-			local function processTextFile(path, textCps)
-				printf("Loading text file: %s", path)
+			local function processTextFile(pathObj, textCpSet)
+				printf("Loading text file: %s", pathObj:toString())
 
-				local s, err = getFileContents(path)
+				local s, err = getFileContents(pathObj)
 				if not s then
-					errorLine("Could not open text file '%s'. (%s)", path, err)
+					errorLine("Could not open text file '%s'. (%s)", pathObj:toString(), err)
 				end
 
 				for _, cp in utf8.codes(s) do
-					if cp >= 32 then  textCps[cp] = true  end -- @Robustness: Better printable character check.
+					if cp >= 32 then  textCpSet[cp] = true  end -- @Robustness: Better printable character check.
 				end
 			end
 
 			for _, path in ipairs(in_textFilesForAll) do -- @Speed: Only process these files from args once.
-				processTextFile(path, rbmfFile.textCodepoints)
+				processTextFile(Path(path), rbmfFile.textCodepoints)
 			end
-			for _, pathRel in ipairs(rbmfFile.textFilePaths) do
-				local dir  = getDirectory(rbmfFile.path)
-				local path = appendPath(dir, pathRel)
-				processTextFile(path, rbmfFile.textCodepoints)
+			for _, path in ipairs(rbmfFile.textFilePaths) do
+				processTextFile(Path(path, Path("..", rbmfFile.path)), rbmfFile.textCodepoints)
 			end
 		end
 	end
@@ -566,6 +551,7 @@ function love.run()
 		local in_lineHeight, in_lineDist
 		local glyphs = {}
 
+		-- Vector font
 		----------------
 
 		if rbmfFile.fontFilename ~= "" then
@@ -579,13 +565,15 @@ function love.run()
 
 			local LG = love.graphics
 
-			local dir = getDirectory(rbmfFile.path)
-			if not connectToDirectory(dir) then
-				errorLine("Could not read from directory '%s'.", dir)
+			local pathObj = Path("..", rbmfFile.path)
+			pathObj:append(rbmfFile.fontFilename)
+
+			if not connectToDirectory(pathObj:getDirectory()) then
+				errorLine("Could not access directory '%s'.", pathObj:getDirectory())
 			end
 
-			printf("Loading font: %s", appendPath(dir, rbmfFile.fontFilename))
-			local font = LG.newFont(rbmfFile.fontFilename, rbmfFile.fontSize, rbmfFile.fontHinting)
+			printf("Loading vector font: %s", pathObj:toString())
+			local font = LG.newFont(pathObj:getFilename(), rbmfFile.fontSize, rbmfFile.fontHinting)
 
 			in_lineHeight = font:getHeight()
 			in_lineDist   = in_lineHeight + 1
@@ -643,18 +631,18 @@ function love.run()
 			end
 
 			-- Figure out virtual input image size and glyph coords.
-			local virtual_imageMaxWidth = LG.getSystemLimits().texturesize
-			local virtual_imageWidth    = 0
-			local virtual_imageHeight   = 0
-			local x1                    = 1/0
-			local y1                    = -in_lineHeight
+			local virtual_imageMaxSize = LG.getSystemLimits().texturesize
+			local virtual_imageWidth   = 0
+			local virtual_imageHeight  = 0
+			local x1                   = 1/0
+			local y1                   = -in_lineHeight
 
 			for _, glyphInfo in ipairs(glyphs) do
 				local c = utf8.char(glyphInfo.cp)
 				local w = font:getWidth(c)
 
-				if x1+w-1 > virtual_imageMaxWidth then
-					virtual_imageHeight = virtual_imageHeight + in_lineHeight
+				if x1+w-1 > virtual_imageMaxSize then
+					virtual_imageHeight = virtual_imageHeight + in_lineHeight -- @Robustness: Limit the height!
 					x1                  = 0
 					y1                  = y1 + in_lineHeight
 				end
@@ -698,14 +686,17 @@ function love.run()
 			font:release()
 			fontCanvas:release()
 
+		-- Bitmap font
 		----------------
 
 		else--if rbmfFile.fontFilename == "" then
-			local dir           = getDirectory(rbmfFile.path)
-			local imageFilename = getBasename(getFilename(rbmfFile.path))..".png" -- @Incomplete: Make sure input and output image do not have the same path.
+			local imagePathObj            = Path(rbmfFile.path)
+			local pathSegments            = imagePathObj.path
+			pathSegments[#pathSegments]   = pathSegments[#pathSegments]:gsub("%.%w+$", "")..".png" -- @Incomplete @Security: Make sure input and output image do not have the same path (or that there are any path collisions).
+			local imageDir, imageFilename = imagePathObj:getDirectoryAndFilename()
 
-			if not connectToDirectory(dir) then
-				errorLine("Could not read from directory '%s'.", getDirectory(rbmfFile.path))
+			if not connectToDirectory(imageDir) then
+				errorLine("Could not access directory '%s'.", imageDir)
 			end
 			in_imageData = LI.newImageData(imageFilename)
 
@@ -734,8 +725,7 @@ function love.run()
 
 			if rbmfFile.lastRow > maxRowsInFont then
 				errorLine(
-					"%s: Font descriptor specifies glyphs up to row %d but only %d rows fit."
-					.." (Line height is %d, image height is %d)",
+					"%s: Font descriptor specifies glyphs up to row %d but only %d rows fit. (Line height is %d, image height is %d)",
 					imageFilename, rbmfFile.lastRow, maxRowsInFont, in_lineHeight, in_imageData:getHeight()
 				)
 			end
@@ -858,7 +848,7 @@ function love.run()
 						if isPositionEarlier(xs[4],ys[4], xs[channel],ys[channel]) then  channel = 4  end
 					end
 
-					if xs[channel]+wPadded-1 > out_imageMaxWidth-outDescr.glyphSpacingH then
+					if xs[channel]+wPadded-1 > out_imageMaxSize-outDescr.glyphSpacingH then -- @Incomplete: Enforce out_imageMaxSize on the height as well.
 						xs[channel]     = outDescr.glyphSpacingH
 						ys[channel]     = ys[channel] + hPadded + outDescr.glyphSpacingV
 						out_imageHeight = math.max(out_imageHeight, ys[channel]+hPadded)
@@ -1186,24 +1176,37 @@ function love.run()
 			end
 
 			-- Save files.
-			local dir = (out_directory ~= "" and out_directory or getDirectory(rbmfFile.path))
-			if not connectToDirectory(dir) then
-				errorLine("Could not access directory '%s'.", dir)
-			end
+			local baseDir = (out_directory ~= "" and out_directory or Path("..", rbmfFile.path):getDirectory())
 
 			if outDescr.filenameImage ~= "" then
-				printf("Writing image: %s", appendPath(dir, outDescr.filenameImage))
-				local ok, err = out_imageData:encode("png", outDescr.filenameImage)
+				local pathObj       = Path(outDescr.filenameImage, baseDir)
+				local dir, filename = pathObj:getDirectoryAndFilename()
+
+				printf("Writing image: %s", pathObj:toString())
+
+				if not connectToDirectory(dir) then
+					errorLine("Could not access directory '%s'.", dir)
+				end
+
+				local ok, err = out_imageData:encode("png", filename)
 				if not ok then
-					errorLine("Could not write font image '%s'. (%s)", outDescr.filenameImage, err)
+					errorLine("Could not write font image '%s'. (%s)", pathObj:toString(), err)
 				end
 			end
 
 			if outDescr.filenameDescriptor ~= "" then
-				printf("Writing descriptor: %s", appendPath(dir, outDescr.filenameDescriptor))
-				local ok, err = LF.write(outDescr.filenameDescriptor, table.concat(out_descriptorBuffer))
+				local pathObj       = Path(outDescr.filenameDescriptor, baseDir)
+				local dir, filename = pathObj:getDirectoryAndFilename()
+
+				printf("Writing descriptor: %s", pathObj:toString())
+
+				if not connectToDirectory(dir) then
+					errorLine("Could not access directory '%s'.", dir)
+				end
+
+				local ok, err = LF.write(filename, table.concat(out_descriptorBuffer))
 				if not ok then
-					errorLine("Could not write font descriptor '%s'. (%s)", outDescr.filenameDescriptor, err)
+					errorLine("Could not write font descriptor '%s'. (%s)", pathObj:toString(), err)
 				end
 			end
 		end--for rbmfFile.outputDescriptors

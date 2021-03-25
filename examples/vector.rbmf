@@ -2,10 +2,10 @@ version=1
 
 [in]
 colored=false
-# textFile=vector.rbmf
 fontFile=IcicleCountryTwo.otf
 fontSize=24
 # fontHinting=mono
+# textFile=vector.rbmf
 
 # [edit]
 # alphaTreshold=.5
@@ -22,7 +22,8 @@ glyphSpacing=1 1
 outlineWidth=1
 outlineColor=.9 .7 0 1
 
-# The row number doesn't matter for TrueType fonts.
+# The row number doesn't matter when we're using a TrueType font as input,
+# so we just put everything on 1.
 [1]
 glyphs=ABCDEFGHIJKLMNOPQRSTUVWXYZ
 glyphs=abcdefghijklmnopqrstuvwxyz
