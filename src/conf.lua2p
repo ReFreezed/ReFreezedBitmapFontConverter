@@ -2,6 +2,8 @@ function love.conf(t)
 	t.version  = "11.3"
 	t.identity = "ReFreezed Bitmap Font converter"
 
+	t.window.icon = "gfx/appIcon16.png"
+
 	!if not TEST then
 		t.modules.audio    = false
 		t.modules.event    = true

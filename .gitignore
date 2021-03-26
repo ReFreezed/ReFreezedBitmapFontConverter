@@ -7,3 +7,8 @@ local/
 /output/
 /srcgen/
 /temp/
+
+/gfx/appIcon*
+!/gfx/appIcon.psd
+!/gfx/appIcon16.png
+!/gfx/appIcon256.png

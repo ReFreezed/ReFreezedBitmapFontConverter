@@ -394,16 +394,16 @@ function _G.copyFile(pathFrom, pathTo)
 	writeFile(pathTo, readFile(pathFrom))
 end
 
-function _G.copyFilesInDirectory(from, to, pattern)
-	makeDirectoryRecursive(to)
+-- copyFilesInDirectory( fromDirectory, toDirectory [, filenamePattern ] )
+function _G.copyFilesInDirectory(dirFrom, dirTo, filenamePattern)
+	makeDirectoryRecursive(dirTo)
 
-	for filename in lfs.dir(from) do
-		if filename:find(pattern) then
-			local path = from.."/"..filename
+	for filename in lfs.dir(dirFrom) do
+		if not filenamePattern or filename:find(filenamePattern) then
+			local path = dirFrom.."/"..filename
 
 			if isFile(path) then
-				local ok, err = copyFile(path, to.."/"..filename)
-				assert(ok, err)
+				copyFile(path, dirTo.."/"..filename)
 			end
 		end
 	end

@@ -148,46 +148,43 @@ if doRelease then
 
 	makeDirectory("temp")
 
-	--[=[
 	do
 		-- Create missing icon sizes.
-		for _, it in ipairs{--[[16,]]24,32,48,64,128--[[,256]]} do
+		for _, size in ipairs{--[[16,]]24,32,48,64,128--[[,256]]} do
 			executeRequired(params.pathMagick, {
 				"gfx/appIcon256.png",
-				"-resize", F("%dx%d", it, it),
-				F("gfx/appIcon%d.png", it),
+				"-resize", F("%dx%d", size, size),
+				F("gfx/appIcon%d.png", size),
 			})
 		end
 
 		-- Crush icon PNGs.
-		-- @Incomplete: Crush all PNGs for release version!
-		for {16,24,32,48,64,128,256} {
+		for _, size in ipairs{16,24,32,48,64,128,256} do
 			executeRequired(params.pathPngCrush, {
 				"-ow",          -- Overwrite (must be first).
 				"-rem", "alla", -- Remove unnecessary chunks.
 				"-reduce",      -- Lossless color reduction.
 				"-warn",        -- No spam!
-				F("gfx/appIcon%d.png", it),
+				F("gfx/appIcon%d.png", size),
 			})
-		}
+		end
 
 		-- Create .ico.
-		writeFile("temp/icons.txt", "\z
-			gfx/appIcon16.png\n\z
-			gfx/appIcon24.png\n\z
-			gfx/appIcon32.png\n\z
-			gfx/appIcon48.png\n\z
-			gfx/appIcon64.png\n\z
-			gfx/appIcon128.png\n\z
-			gfx/appIcon256.png\n\z
-		")
+		writeFile("temp/icons.txt", ([[
+			gfx/appIcon16.png
+			gfx/appIcon24.png
+			gfx/appIcon32.png
+			gfx/appIcon48.png
+			gfx/appIcon64.png
+			gfx/appIcon128.png
+			gfx/appIcon256.png
+		]]):gsub("\t", ""))
 
 		executeRequired(params.pathMagick, {
 			"@temp/icons.txt",
 			values.iconPath,
 		})
 	end
-	--]=]
 
 	-- Make love. <3
 	local filesToLove = {
@@ -195,7 +192,7 @@ if doRelease then
 		"main.lua",
 	}
 
-	for _, dir in ipairs{--[["gfx",]]"srcgen"} do
+	for _, dir in ipairs{"gfx","srcgen"} do
 		traverseDirectory(dir, function(path)
 			if isFile(path) then
 				local ext = path:match"[^.]+$"
@@ -249,9 +246,8 @@ if doRelease then
 				-delete ICONGROUP,,
 				-delete VERSIONINFO,,
 				-add "${versionInfoPath}", ,,
+				-add "${iconPath}", ICONGROUP,MAINICON,0
 			]]):gsub("\t+", "")
-			-- 	-add "${iconPath}", ICONGROUP,MAINICON,0
-			-- ]]):gsub("\t+", "") -- @Incomplete: App icon!
 
 			local contents = templateToString(TEMPLATE_UPDATE_EXE, values, toWindowsPath)
 			writeTextFile("temp/updateExe.rhs", contents)
@@ -280,6 +276,7 @@ if doRelease then
 
 		-- Add remaining files.
 		do
+			copyFilesInDirectory("examples", outputDir.."/examples")
 			copyFile("build/Changelog.txt", outputDir.."/_Changelog.txt")
 			copyFile("build/README.txt",    outputDir.."/_README.txt")
 		end
@@ -332,6 +329,7 @@ if doRelease then
 
 		-- Add remaining files.
 		do
+			copyFilesInDirectory("examples", outputDir.."/examples")
 			copyFile(values.lovePath,       contentsDir.."/Resources/Game.love")
 			copyFile("temp/appIcon.icns",   contentsDir.."/Resources/AppIcon.icns")
 			copyFile("build/Changelog.txt", outputDir.."/_Changelog.txt")
@@ -347,6 +345,7 @@ if doRelease then
 		removeDirectoryRecursive(outputDir)
 		makeDirectoryRecursive(outputDir)
 
+		copyFilesInDirectory("examples", outputDir.."/examples")
 		copyFile(values.lovePath,                F("%s/%s.love",                 outputDir, values.exeName))
 		copyFile("build/Changelog.txt",          F("%s/_Changelog.txt",          outputDir))
 		copyFile("build/README.txt",             F("%s/_README.txt",             outputDir))

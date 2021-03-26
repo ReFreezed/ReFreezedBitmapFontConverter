@@ -206,6 +206,8 @@ function love.run()
 	printf(      "MaxSize: %d", out_imageMaxSize)
 	print!(CMD_SEPARATOR)
 
+	local iconImageData = LI.newImageData("gfx/appIcon16.png") -- We do this before starting to tinker with PhysFS.
+
 	-- Collect all paths to process.
 	local rbmfFiles = {}
 
@@ -565,8 +567,11 @@ function love.run()
 				require"love.window"
 				require"love.graphics"
 				require"love.font"
-				-- @UX: Can we hide the window somehow? At least it seems to be transparent because we don't call present() (tested on Windows 7).
+
+				-- @UX: Can we make the window not grab focus somehow?
 				love.window.setMode(1, 1, {borderless=true, vsync=false, x=0, y=0})
+				love.window.setIcon(iconImageData)
+				love.window.minimize()
 			end
 
 			local LG = love.graphics
@@ -1223,14 +1228,34 @@ function love.run()
 	-- Write icons file
 	--
 	if out_iconsPath ~= "" then
-		local out_iconsFile = assert(io.open(out_iconsPath, "wb"))
+		local icons = getIcons()
 
-		for _, icon in ipairs(getIcons()) do
-			local cp = getIconCodepoint(icon)
-			out_iconsFile:write(F("%d %s\n", cp, icon))
+		-- Should we always write the icons file? (This is probably never an
+		-- issue as it seems unlikely that someone will define icons at some
+		-- point but later change their mind and remove them all, thus leaving
+		-- this file with garbage in it.)
+		if icons[1] then
+			local buffer = {}
+
+			for _, icon in ipairs(icons) do
+				local cp = getIconCodepoint(icon)
+				table.insert(buffer, F("%d %s\n", cp, icon))
+			end
+
+			local pathObj       = Path(out_iconsPath)
+			local dir, filename = pathObj:getDirectoryAndFilename()
+
+			printf("Writing icons file: %s", pathObj:toString())
+
+			if not connectToDirectory(dir) then
+				errorLine("Could not access directory '%s'.", dir)
+			end
+
+			local ok, err = LF.write(filename, table.concat(buffer))
+			if not ok then
+				errorLine("Could not write icons file '%s'. (%s)", pathObj:toString(), err)
+			end
 		end
-
-		out_iconsFile:close()
 	end
 
 	--
