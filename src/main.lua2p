@@ -26,7 +26,7 @@ local CMD_HELP = [=[
 
 !if not TEST then
 
-!local CMD_TITLE     = "ReFreezed Bitmap Font converter"
+!local CMD_TITLE     = "ReFreezed Bitmap Font converter "..getReleaseVersion()
 !local CMD_SEPARATOR = string.rep("-", #CMD_TITLE)
 
 local programArguments = arg

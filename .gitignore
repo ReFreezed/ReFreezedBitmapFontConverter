@@ -1,7 +1,9 @@
-/local/
+*.lnk
+local/
+
+/*.lua
+/*.sublime-*
+/.run
+/output/
 /srcgen/
 /temp/
-
-/*.sublime-*
-/conf.lua
-/main.lua

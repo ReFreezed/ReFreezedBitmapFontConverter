@@ -1,0 +1,5 @@
+Changelog
+ReFreezed Bitmap Font converter
+
+v1.0 (2021-03-26)
+- Initial release!
