@@ -2,7 +2,6 @@ ReFreezed Bitmap Font converter
 Developed by Marcus 'ReFreezed' Thunström
 
 Website: https://github.com/ReFreezed/ReFreezedBitmapFontConverter
-Code repository: https://github.com/ReFreezed/ReFreezedBitmapFontConverter
 
 1. Disclaimer
 2. Intro

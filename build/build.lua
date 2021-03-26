@@ -139,7 +139,7 @@ if doRelease then
 
 			lovePath        = "temp/app.love",
 			loveExeDir      = params.dirLoveWin64,
-			loveExePath     = params.dirLoveWin64.."/love.exe",
+			loveExePath     = params.dirLoveWin64.."/lovec.exe",
 			loveAppDir      = params.dirLoveMacOs,
 			loveAppPath     = params.dirLoveMacOs.."/love.app",
 			versionInfoPath = "temp/appInfo.res",
@@ -260,8 +260,8 @@ if doRelease then
 		-- Create base for install directory using robocopy.
 		-- Note: Because of robocopy's complex return codes we just trust that it's always successful.
 		-- https://blogs.technet.microsoft.com/deploymentguys/2008/06/16/robocopy-exit-codes/
-		execute("ROBOCOPY", {values.loveExeDir, outputDir, "/NOCOPY", "/PURGE", "/E", "/LOG+:"..PATH_RC_LOG})
-		execute("ROBOCOPY", {values.loveExeDir, outputDir, "*.dll",             "/E", "/LOG+:"..PATH_RC_LOG})
+		execute("ROBOCOPY", {values.loveExeDir, outputDir, "/NOCOPY", "/PURGE",           "/E", "/LOG+:"..PATH_RC_LOG})
+		execute("ROBOCOPY", {values.loveExeDir, outputDir, "*.dll", "/XF","OpenAL32.dll", "/E", "/LOG+:"..PATH_RC_LOG})
 
 		-- Create exe.
 		do
