@@ -76,9 +76,12 @@ Options:
 ==============================================================================
 
 The bitmap font image consists of multiple rows of glyphs ordered from left to
-right with each row and glyph separated by a border. The top left pixel
-determines what color the border is. All rows must be the same height. (See
-the examples folder for example images.)
+right with each row and glyph separated by a one pixel wide border. The top
+left pixel in the image determines what color the border is. The areas between
+the borders are interpreted as the actual font glyphs. Any extra pixels to the
+right of the rightmost glyph on each row, or anything below the last row, is
+ignored. All rows must be the same height. (See the examples folder for
+example images.)
 
 
 
@@ -117,9 +120,10 @@ File structure:
 
 
     # [out] sections (of which there can be multiple) specifies how the font
-    # should be processed and outputted. One .rbmf descriptor file can output
-    # multiple BMFont files. There should be at least one [out] section,
-    # otherwise the program doesn't really do anything!
+    # should be processed, outputted and finally rendered. One .rbmf
+    # descriptor file can output multiple BMFont files. There should be at
+    # least one [out] section, otherwise the program doesn't really do
+    # anything!
     [out]
 
     # Filename of the outputted image, e.g. "<name>.png" (<name> will be
@@ -132,26 +136,27 @@ File structure:
     fileDescriptor=filename
 
     # Width of the outline, if an outline should be added by the program.
-    # (Default: No outline is added)
+    # (Default: 0, no outline is added)
     outlineWidth=1
 
-    # Color of the outline, if an outline should be added by the program.
-    # The values should be numbers between 0 and 1. (Default: 0 0 0 1)
+    # Color of the outline, if an outline is added by the program. The values
+    # should be numbers between 0 and 1. (Default: 0 0 0 1)
     outlineColor=red green blue alpha
 
-    # Extra space around each glyph. Note that when LÖVE renders the text
-    # these paddings will be part of the glyphs (i.e. characters will take up
-    # more space, which may be useful e.g. for custom shaders). The value have
-    # multiple formats.
+    # Extra space around each glyph. Note that when LÖVE renders the text this
+    # padding will be part of each glyph (i.e. more pixels will be rendered
+    # around each character, which may be useful for custom shaders). Also
+    # note that padding does not affect the distance between characters when
+    # rendered - that's what renderSpacing and kerning is for. Setting this to
+    # a positive number may remove black fringe around glyphs when text is
+    # rendered rotated/scaled or at non-integer coordinates if linear
+    # interpolation is used. The value have multiple formats.
     glyphPadding=padding
     glyphPadding=vertival horizontal
     glyphPadding=up horizontal down
     glyphPadding=up right down left
 
-    # Extra space between glyphs. Setting this may fix artifacts when text is
-    # rendered rotated/scaled or at non-integer coordinates if linear
-    # interpolation is used (and there's no glyphPadding). The value have
-    # multiple formats.
+    # Extra space between glyphs. The value have multiple formats.
     glyphSpacing=spacing
     glyphSpacing=vertival horizontal
 
@@ -159,6 +164,10 @@ File structure:
     # multiple formats.
     imagePadding=padding
     imagePadding=vertival horizontal
+
+    # Set the distance between glyphs when rendered (in addition to any
+    # kerning). (Default: 1)
+    renderSpacing=offset
 
     # You can embed multiple custom values in the outputted BMFont file using
     # this format.

@@ -91,6 +91,8 @@ local function OutputDescriptor()
 		outlineWidth = 0,
 		outlineColor = {0,0,0,1},
 
+		renderSpacing = 1,
+
 		customValues = {--[[ [1]=k1, [k1]=v1, ... ]]},
 		--
 
@@ -389,6 +391,9 @@ function love.run()
 					currentOutDescr.outlineColor[2] = math.min(math.max(g, 0), 1)
 					currentOutDescr.outlineColor[3] = math.min(math.max(b, 0), 1)
 					currentOutDescr.outlineColor[4] = math.min(math.max(a, 0), 1)
+
+				elseif k == "renderSpacing" then
+					currentOutDescr.renderSpacing = fileAssert(rbmfFile, parseInt(v))
 
 				elseif k:find"^custom%.[%a_][%w_]*$" then
 					k = k:sub(8)
@@ -716,9 +721,11 @@ function love.run()
 			!GET_IMAGE_DATA_POINTER `in_imageData`
 			!GET_PIXEL(`in_imageData`, `sepR`,`sepG`,`sepB`,`sepA`, 0,0)
 
+			-- in_imageData:mapPixel(function()  return sepR,sepG,sepB,sepA  end, 1,0, 1,in_imageData:getHeight()) -- DEBUG: Test border that is multiple pixels thick.
+
 			-- Get line height and distance.
 			-- LineDistance = SeparatorHeight + LineHeight
-			in_lineDist = in_imageData:getHeight() - 1
+			in_lineDist = 0
 
 			for y = 1, in_imageData:getHeight()-1 do
 				!GET_PIXEL(`in_imageData`, `r`,`g`,`b`,`a`, 1,`y`)
@@ -730,10 +737,13 @@ function love.run()
 			end
 
 			in_lineHeight = in_lineDist - 1
-			assert(in_lineHeight >= 1)
+
+			if in_lineHeight < 1 then
+				errorLine("%s: Something went wrong when calculating line height. Are borders surrounding the glyphs properly?", imageFilename)
+			end
 
 			-- Check if everything fits in the source image like the descriptor says.
-			local maxRowsInFont = math.floor(in_imageData:getHeight() / in_lineDist)
+			local maxRowsInFont = math.floor((in_imageData:getHeight()-1) / in_lineDist)
 
 			if rbmfFile.lastRow > maxRowsInFont then
 				errorLine(
@@ -848,9 +858,9 @@ function love.run()
 					return (x1 < x2)
 				end
 
-				for _, glyphInfo in ipairs(glyphs) do
-					local wPadded = glyphInfo.inW + 2*outDescr.outlineWidth + outDescr.glyphPaddingL + outDescr.glyphPaddingR
-					local hPadded = glyphInfo.inH + 2*outDescr.outlineWidth + outDescr.glyphPaddingU + outDescr.glyphPaddingD
+				for i, glyphInfo in ipairs(glyphs) do
+					local wPadded = glyphInfo.inW + 2*outDescr.outlineWidth + outDescr.glyphPaddingL+outDescr.glyphPaddingR
+					local hPadded = glyphInfo.inH + 2*outDescr.outlineWidth + outDescr.glyphPaddingU+outDescr.glyphPaddingD
 
 					local channel = 1
 
@@ -860,7 +870,7 @@ function love.run()
 						if isPositionEarlier(xs[4],ys[4], xs[channel],ys[channel]) then  channel = 4  end
 					end
 
-					if xs[channel]+wPadded-1 > out_imageMaxSize-outDescr.imagePaddingH then -- @Incomplete: Enforce out_imageMaxSize on the height as well.
+					if xs[channel]+wPadded-1 > out_imageMaxSize-outDescr.imagePaddingH and i > 1 then -- @Incomplete: Enforce out_imageMaxSize on the height as well (split into multiple images).
 						xs[channel] = outDescr.imagePaddingH
 						ys[channel] = ys[channel] + hPadded + outDescr.glyphSpacingV
 					end
@@ -883,6 +893,13 @@ function love.run()
 
 				assert(out_imageWidth  > 0)
 				assert(out_imageHeight > 0)
+
+				if out_imageWidth > out_imageMaxSize or out_imageHeight > out_imageMaxSize then
+					errorLine(
+						"The image for '%s' need a bigger size limit than %dx%d. (The size is %dx%d)",
+						Path(outDescr.pathImage):toString(), out_imageMaxSize, out_imageMaxSize, out_imageWidth, out_imageHeight
+					)
+				end
 
 				-- Even numbers are safer than odd, yo.
 				out_imageWidth  = math.ceil(out_imageWidth  / 2) * 2
@@ -998,7 +1015,7 @@ function love.run()
 					glyphInfo.cp, -- id
 					glyphInfo.outX, glyphInfo.outY, -- x, y
 					glyphInfo.outW, glyphInfo.outH, -- width, height
-					glyphInfo.inW + outDescr.glyphSpacingH, -- xadvance
+					glyphInfo.inW + outDescr.renderSpacing, -- xadvance
 					(outDescr.pack and 2^(glyphInfo.outChannel-1) or 15) -- chnl
 				))
 			end
@@ -1286,13 +1303,30 @@ end
 !else--if TEST then
 
 function love.load()
+	io.stdout:setvbuf"no"
+	io.stderr:setvbuf"no"
+
+	_G.LG = love.graphics
+
+	_G.fontIndex = 1
+
+	_G.scalePower = 2
+
+	_G.info      = ""
+	_G.infoAlpha = 0
+
+	loadOrReload()
+end
+
+function _G.loadOrReload()
 	-- love.graphics.setDefaultFilter("nearest")
 
-	local path = "temp/smallPixel.bmfont"
-	-- local path = "temp/smallPixel_outline.bmfont"
-	-- local path = "temp/vector.bmfont"
-	-- local path = "temp/vector_outline.bmfont"
-	_G.font = love.graphics.newFont(path)
+	_G.fonts = {
+		love.graphics.newFont("temp/smallPixel.bmfont"),
+		love.graphics.newFont("temp/smallPixel_outline.bmfont"),
+		love.graphics.newFont("temp/vector.bmfont"),
+		love.graphics.newFont("temp/vector_outline.bmfont"),
+	}
 
 	_G.icons = {}
 
@@ -1307,14 +1341,47 @@ end
 function love.keypressed(key)
 	if key == "escape" then
 		love.event.quit()
+
+	elseif key == "f5" then
+		info      = "Reloading..."
+		infoAlpha = 1
+		loadOrReload()
+
+	elseif key == "1" then
+		fontIndex = 1
+	elseif key == "2" then
+		fontIndex = 2
+	elseif key == "3" then
+		fontIndex = 3
+	elseif key == "4" then
+		fontIndex = 4
+
+	elseif key == "+" or key == "kp+" then
+		scalePower = scalePower + 1
+	elseif key == "-" or key == "kp-" then
+		scalePower = scalePower - 1
 	end
 end
 
+function love.update(dt)
+	infoAlpha = math.max(infoAlpha-dt/0.60, 0)
+end
+
 function love.draw()
-	love.graphics.clear(.25, .25, .25, 1)
-	love.graphics.setFont(font)
-	love.graphics.scale(4)
+	love.graphics.clear(.3, .3, .3, 1)
+
+	if info ~= "" then
+		love.graphics.push("all")
+		love.graphics.setColor(1, 1, 1, infoAlpha)
+		love.graphics.print(info)
+		love.graphics.pop()
+	end
+
+	love.graphics.push("all")
+	love.graphics.setFont(fonts[fontIndex])
+	love.graphics.scale(2^scalePower)
 	love.graphics.print(text, 5, 5)
+	love.graphics.pop()
 end
 
 !end
