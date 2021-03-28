@@ -8,18 +8,19 @@
 --============================================================]]
 
 local CMD_HELP = [=[
-	Arguments:
-		<inputPath1> [<inputPath2> ...]
-		[--outdir   <outputDirectory>]     # Where to output files. (Default: Same directory as the input.)
-		[--icons    <outputFilePath>]      # Where to put the icons file if any icons are specified. (Default: <outputDirectory>/.fonticons)
-		[--mergeicons]                     # Merge new icons with existing icons if the icons file exists. (Default: Icon file is replaced.)
-		[--maxsize  <outputImageMaxSize>]  # Default: 2048
-		[--textfile <filePath1> [--textfile <filePath2> ...]]
+	> RbmfConverter.exe inputPath1 [inputPath2 ...] [options]
+
+	Options:
+		--outdir   <outputDirectory>     # Where to output files. (Default: Same directory as the input.)
+		--icons    <outputFilePath>      # Where to put the icons file if any icons are specified. (Default: <outputDirectory>/.fonticons)
+		--mergeicons                     # Merge new icons with existing icons if the icons file exists. (Default: Icon file is replaced.)
+		--maxsize  <outputImageMaxSize>  # Default: 2048
+		--textfile <filePath1> [--textfile <filePath2> ...]
 
 	Notes:
 		<inputPath> can be a .rbmf file or a directory with .rbmf files.
 		The filenames of outputted files is specified in the font descriptor.
-		Relative --textfile paths will be relative to CWD, unlike the 'textFile' input descriptor field.
+		Relative --textfile paths will be relative to CWD, unlike the 'textFile' input parameter in the descriptor.
 ]=]
 
 
@@ -48,11 +49,11 @@ local function RbmfFile()
 
 		fontFilename = "",
 		fontSize     = 0,
-		fontHinting  = "normal",
+		fontHinting  = "normal", -- "normal"|"light"|"mono"|"none"
 
 		textFilePaths = {--[[ path1, ... ]]},
 
-		editAlphaTreshold = 0, -- 0 means no cleaning of font pixels.
+		editAlphaThreshold = 0, -- 0 means no cleaning of font pixels.
 
 		outputDescriptors = {--[[ outputDescriptor1, ... ]]},
 
@@ -338,10 +339,10 @@ function love.run()
 			elseif section == "edit" then
 				v = trim(v)
 
-				if k == "alphaTreshold" then
-					rbmfFile.editAlphaTreshold = fileAssert(rbmfFile, parseNumber(v))
-					if rbmfFile.editAlphaTreshold < 0 or rbmfFile.editAlphaTreshold > 1 then
-						fileError(rbmfFile, "Alpha treshold must be between 0 and 1. (Value is '%s')", v)
+				if k == "alphaThreshold" then
+					rbmfFile.editAlphaThreshold = fileAssert(rbmfFile, parseNumber(v))
+					if rbmfFile.editAlphaThreshold < 0 or rbmfFile.editAlphaThreshold > 1 then
+						fileError(rbmfFile, "Alpha threshold must be between 0 and 1. (Value is '%s')", v)
 					end
 
 				else
@@ -794,10 +795,10 @@ function love.run()
 		--
 		-- Edit input image
 		--
-		if rbmfFile.editAlphaTreshold > 0 then
+		if rbmfFile.editAlphaThreshold > 0 then
 			-- Need to @Revise all this! 2021-03-21
-			local function applyAlphaTreshold(x,y, r,g,b,a)
-				return r, g, b, (a >= rbmfFile.editAlphaTreshold and 1 or 0)
+			local function applyAlphaThreshold(x,y, r,g,b,a)
+				return r, g, b, (a >= rbmfFile.editAlphaThreshold and 1 or 0)
 			end
 
 			for _, glyphInfo in ipairs(glyphs) do
@@ -818,7 +819,7 @@ function love.run()
 					print("measure post", glyphInfo.cp, glyphInfo.inX2-glyphInfo.inX1)
 					--]]
 
-					in_imageData:mapPixel(applyAlphaTreshold, outerX1,outerY1, outerX2-outerX1+1,outerY2-outerY1+1) -- @Speed
+					in_imageData:mapPixel(applyAlphaThreshold, outerX1,outerY1, outerX2-outerX1+1,outerY2-outerY1+1) -- @Speed
 				end
 			end
 		end
@@ -1084,7 +1085,7 @@ function love.run()
 									-- We use the next piece of code instead!
 									-- neighborAlpha = max(neighborAlpha, circleA*min(max(outlineWidth-distSq^.5, 0), 1))
 
-									if circleA > .4 then -- @Hardcoded alpha treshold. (How does e.g. Photoshop create outline effects on layers? I think they use a treshold similar to this.)
+									if circleA > .4 then -- @Hardcoded alpha threshold. (How does e.g. Photoshop create outline effects on layers? I think they use a threshold similar to this.)
 										neighborAlpha = max(neighborAlpha, min(outlineWidth-distSq^.5+1, 1)) -- (Why is +1 needed here for the result to be correct?)
 
 										-- Maybe something like this would be better than the above? Also, maybe we should
@@ -1291,7 +1292,16 @@ function love.load()
 	-- local path = "temp/smallPixel_outline.bmfont"
 	-- local path = "temp/vector.bmfont"
 	-- local path = "temp/vector_outline.bmfont"
-	_G.theFont = love.graphics.newFont(path)
+	_G.font = love.graphics.newFont(path)
+
+	_G.icons = {}
+
+	for line in love.filesystem.lines("temp/.fonticons") do
+		local cp, name = line:match"(%d+) (%S+)"
+		icons[name]    = require"utf8".char(tonumber(cp))
+	end
+
+	_G.text = ("Hello, world!\nPress {psx} to begin"):gsub("{(%w+)}", icons)
 end
 
 function love.keypressed(key)
@@ -1302,9 +1312,9 @@ end
 
 function love.draw()
 	love.graphics.clear(.25, .25, .25, 1)
-	love.graphics.setFont(theFont)
+	love.graphics.setFont(font)
 	love.graphics.scale(4)
-	love.graphics.print("Hello, world!", 5, 5)
+	love.graphics.print(text, 5, 5)
 end
 
 !end

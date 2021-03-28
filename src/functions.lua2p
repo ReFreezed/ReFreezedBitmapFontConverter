@@ -486,7 +486,7 @@ end
 
 function _G.processPathTemplate(rbmfFile, pathTemplate)
 	return (pathTemplate:gsub("<(.-)>", function(var)
-		if var == "basename" then
+		if var == "name" then
 			return getBasename(getFilename(rbmfFile.path))
 		else
 			fileError(rbmfFile, "Unknown variable <%s> in path '%s'.", var, pathTemplate)

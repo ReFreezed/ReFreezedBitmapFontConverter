@@ -8,24 +8,24 @@ fontSize=24
 # textFile=vector.rbmf
 
 # [edit]
-# alphaTreshold=.5
+# alphaThreshold=.5
 
 [out]
-fileImage=<basename>.png
-fileDescriptor=<basename>.bmfont
+fileImage=<name>.png
+fileDescriptor=<name>.bmfont
 glyphSpacing=1
 imagePadding=1
 
 [out]
-fileImage=<basename>_outline.png
-fileDescriptor=<basename>_outline.bmfont
+fileImage=<name>_outline.png
+fileDescriptor=<name>_outline.bmfont
 outlineWidth=1
 outlineColor=.9 .7 0 1
 glyphSpacing=1
 imagePadding=1
 
 # The row number doesn't matter when we're using a TrueType font as input,
-# so we just put everything on 1.
+# so we just put everything on row 1.
 [1]
 glyphs=ABCDEFGHIJKLMNOPQRSTUVWXYZ
 glyphs=abcdefghijklmnopqrstuvwxyz

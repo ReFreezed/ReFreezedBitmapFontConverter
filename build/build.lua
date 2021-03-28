@@ -120,8 +120,8 @@ if doRelease then
 		local versionStr, major,minor,patch = getReleaseVersion()
 
 		values = {
-			exeName         = "ReFreezedBitmapFontConverter",
-			exePath         = outputDirWin64.."/ReFreezedBitmapFontConverter.exe",
+			exeName         = "RbmfConverter",
+			exePath         = outputDirWin64.."/RbmfConverter.exe",
 			iconPath        = "temp/appIcon.ico",
 
 			appName         = "ReFreezed Bitmap Font converter",
@@ -353,9 +353,9 @@ if doRelease then
 	end
 
 	-- Zip for distribution!
-	zipDirectory(params, "output/ReFreezedBitmapFontConverter_"..values.appVersion.."_win64.zip",     "./"..outputDirWin64)
-	-- zipDirectory(params, "output/ReFreezedBitmapFontConverter_"..values.appVersion.."_macos.zip",     "./"..outputDirMacOs)
-	zipDirectory(params, "output/ReFreezedBitmapFontConverter_"..values.appVersion.."_universal.zip", "./"..outputDirUniversal)
+	zipDirectory(params, "output/RbmfConverter_"..values.appVersion.."_win64.zip",     "./"..outputDirWin64)
+	-- zipDirectory(params, "output/RbmfConverter_"..values.appVersion.."_macos.zip",     "./"..outputDirMacOs)
+	zipDirectory(params, "output/RbmfConverter_"..values.appVersion.."_universal.zip", "./"..outputDirUniversal)
 
 	print("Release ready!")
 end
