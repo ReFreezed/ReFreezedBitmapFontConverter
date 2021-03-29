@@ -107,7 +107,7 @@ end
 
 
 function love.errorhandler(err)
-	io.stderr:write(debug.traceback("Error: "..tostring(err), 3), "\n", "\n") -- @UX
+	io.stderr:write(debug.traceback("ERROR(internal): "..tostring(err), 3), "\n\n")
 end
 love.errhand = nil
 
@@ -206,10 +206,10 @@ function love.run()
 	print(os.date"         %Y-%m-%d %H:%M:%S")
 	printf(      "  Input: %s", table.concat(in_paths, ", "))
 	printf(      " Output: %s", (out_directory ~= "" and out_directory or "(in input directory)"))
-	printf(      "MaxSize: %d", out_imageMaxSize)
+	printf(      "MaxSize: %dx%d", out_imageMaxSize, out_imageMaxSize)
 	print!(CMD_SEPARATOR)
 
-	local iconImageData = LI.newImageData("gfx/appIcon16.png") -- We do this before starting to tinker with PhysFS.
+	local iconImageData = LI.newImageData("gfx/appIcon16.png") -- We do this before we start tinkering with PhysFS.
 
 	-- Collect all paths to process.
 	local rbmfFiles = {}
@@ -698,7 +698,7 @@ function love.run()
 			LG.setCanvas(nil)
 
 			in_imageData = fontCanvas:newImageData()
-			-- assert(connectToDirectory(LF.getSaveDirectory()), LF.getSaveDirectory()) ; in_imageData:encode("png", "virt_in_image.png") -- DEBUG
+			-- assert(connectToDirectory(LF.getSaveDirectory()), LF.getSaveDirectory()) ; assert(in_imageData:encode("png", "virt_in_image.png")) -- DEBUG
 
 			font:release()
 			fontCanvas:release()
@@ -844,19 +844,25 @@ function love.run()
 			outDescr.pack      = false--outDescr.couldPack -- LÖVE does not seem to support packing yet as of 11.3.
 
 			-- Figure out how big the output image should be and the position of the glyphs.
-			local out_imageWidth  = 0
+			local out_imageDatas  = {}
+			local out_imageWidth  = 0 -- The dimensions must be the same for all images.
 			local out_imageHeight = 0
 
 			do
-				local x  = outDescr.imagePaddingH
-				local y  = outDescr.imagePaddingV
-				local xs = {x, x, x, x}
-				local ys = {y, y, y, y}
-
-				local function isPositionEarlier(x1,y1, x2,y2)
-					if y1 < y2 then  return true  end
+				local function isPositionEarlier(i1,x1,y1, i2,x2,y2)
+					if i1 ~= i2 then  return (i1 < i2)  end
+					if y1 ~= y2 then  return (y1 < y2)  end
 					return (x1 < x2)
 				end
+
+				local x0 = outDescr.imagePaddingH
+				local y0 = outDescr.imagePaddingV
+
+				local xs = {--[[r]]x0, --[[g]]x0, --[[b]]x0, --[[a]]x0}
+				local ys = {--[[r]]y0, --[[g]]y0, --[[b]]y0, --[[a]]y0}
+				local is = {--[[r]]1,  --[[g]]1,  --[[b]]1,  --[[a]]1 }
+
+				local out_pageCount = 1
 
 				for i, glyphInfo in ipairs(glyphs) do
 					local wPadded = glyphInfo.inW + 2*outDescr.outlineWidth + outDescr.glyphPaddingL+outDescr.glyphPaddingR
@@ -865,17 +871,23 @@ function love.run()
 					local channel = 1
 
 					if outDescr.pack then
-						if isPositionEarlier(xs[2],ys[2], xs[channel],ys[channel]) then  channel = 2  end
-						if isPositionEarlier(xs[3],ys[3], xs[channel],ys[channel]) then  channel = 3  end
-						if isPositionEarlier(xs[4],ys[4], xs[channel],ys[channel]) then  channel = 4  end
+						if isPositionEarlier(is[2],xs[2],ys[2], is[channel],xs[channel],ys[channel]) then  channel = 2  end
+						if isPositionEarlier(is[3],xs[3],ys[3], is[channel],xs[channel],ys[channel]) then  channel = 3  end
+						if isPositionEarlier(is[4],xs[4],ys[4], is[channel],xs[channel],ys[channel]) then  channel = 4  end
 					end
 
-					if xs[channel]+wPadded-1 > out_imageMaxSize-outDescr.imagePaddingH and i > 1 then -- @Incomplete: Enforce out_imageMaxSize on the height as well (split into multiple images).
-						xs[channel] = outDescr.imagePaddingH
+					if xs[channel]+wPadded > out_imageMaxSize-outDescr.imagePaddingH and i > 1 then
+						xs[channel] = x0
 						ys[channel] = ys[channel] + hPadded + outDescr.glyphSpacingV
+
+						if ys[channel]+hPadded > out_imageMaxSize-outDescr.imagePaddingV then
+							ys[channel] = y0
+							is[channel] = is[channel] + 1
+						end
 					end
 
-					glyphInfo.outChannel = channel
+					glyphInfo.outChannel    = channel
+					glyphInfo.outImageIndex = is[channel]
 
 					glyphInfo.outW = wPadded
 					glyphInfo.outH = hPadded
@@ -884,6 +896,7 @@ function love.run()
 
 					out_imageWidth  = math.max(out_imageWidth,  xs[channel]+wPadded)
 					out_imageHeight = math.max(out_imageHeight, ys[channel]+hPadded)
+					out_pageCount   = math.max(out_pageCount,   is[channel])
 
 					xs[channel] = xs[channel] + wPadded + outDescr.glyphSpacingH
 				end
@@ -891,25 +904,31 @@ function love.run()
 				out_imageWidth  = out_imageWidth  + outDescr.imagePaddingH
 				out_imageHeight = out_imageHeight + outDescr.imagePaddingV
 
+				-- Even numbers are safer than odd, yo.
+				out_imageWidth  = math.ceil(out_imageWidth  / 2) * 2
+				out_imageHeight = math.ceil(out_imageHeight / 2) * 2
+
 				assert(out_imageWidth  > 0)
 				assert(out_imageHeight > 0)
 
 				if out_imageWidth > out_imageMaxSize or out_imageHeight > out_imageMaxSize then
 					errorLine(
-						"The image for '%s' need a bigger size limit than %dx%d. (The size is %dx%d)",
+						"Image '%s' need a bigger size limit than %dx%d. (The size is %dx%d)",
 						Path(outDescr.pathImage):toString(), out_imageMaxSize, out_imageMaxSize, out_imageWidth, out_imageHeight
 					)
 				end
 
-				-- Even numbers are safer than odd, yo.
-				out_imageWidth  = math.ceil(out_imageWidth  / 2) * 2
-				out_imageHeight = math.ceil(out_imageHeight / 2) * 2
+				for imageIndex = 1, out_pageCount do
+					out_imageDatas[imageIndex] = LI.newImageData(out_imageWidth, out_imageHeight)
+				end
 			end
 
-			local out_imageData        = LI.newImageData(out_imageWidth, out_imageHeight)
 			local out_descriptorBuffer = {}
 
 			table.insert(out_descriptorBuffer, F(
+				-- @Polish: Output correct value for 'smooth' and 'aa'. (Is this always possible, or ever useful?)
+				-- @Polish: Maybe have a way of specifying 'bold' and 'italic' (though it's probably useless information).
+				-- @Polish: We can do more here, but it's all probably useless!
 				'info face="" size=%d bold=0 italic=0 charset="" unicode=1 stretchH=100 smooth=0 aa=0 padding=%d,%d,%d,%d spacing=%d,%d outline=%d',
 				in_lineHeight, -- size
 				outDescr.glyphPaddingU, outDescr.glyphPaddingR, outDescr.glyphPaddingD, outDescr.glyphPaddingL, -- padding
@@ -924,60 +943,67 @@ function love.run()
 			table.insert(out_descriptorBuffer, "\n")
 
 			table.insert(out_descriptorBuffer, F(
-				-- @Incomplete: Support multiple pages when needed for big font sizes.
-				'common lineHeight=%d base=%d scaleW=%d scaleH=%d pages=1 packed=%d alphaChnl=0 redChnl=0 greenChnl=0 blueChnl=0\n',
+				'common lineHeight=%d base=%d scaleW=%d scaleH=%d pages=%d packed=%d alphaChnl=0 redChnl=0 greenChnl=0 blueChnl=0\n',
 				in_lineHeight, -- lineHeight
 				in_lineHeight, -- base
 				out_imageWidth, out_imageHeight, -- scaleW, scaleH
+				#out_imageDatas, -- pages
 				(outDescr.pack and 1 or 0) -- packed
 			))
 
-			table.insert(out_descriptorBuffer, F('page id=0 file="%s"\n', outDescr.filenameImage))
-
 			-- Write glyphs.
+			for imageIndex = 1, #out_imageDatas do
+				table.insert(out_descriptorBuffer, F('page id=%d file="%s"\n', imageIndex-1, outputImageFilenameBaseToFilename(outDescr.filenameImage, imageIndex)))
+			end
+
 			table.insert(out_descriptorBuffer, F('chars count=%d\n', #glyphs))
 
-			-- out_imageData:mapPixel(function(x,y, r,g,b,a)  return 1, 0, 0, 1  end) -- DEBUG: Show areas we don't paste glyphs in.
+			-- for _, data in ipairs(out_imageDatas) do  data:mapPixel(function(x,y, r,g,b,a)  return 1, 0, 0, 1  end)  end -- DEBUG: Show areas we don't paste glyphs in.
 
 			if outDescr.pack then
 				!GET_IMAGE_DATA_POINTER `in_imageData`
-				!GET_IMAGE_DATA_POINTER `out_imageData`
 
-				for _, glyphInfo in ipairs(glyphs) do
-					local outX1 = glyphInfo.outX + outDescr.glyphPaddingL -- Note: Packed glyphs have no outlines.
-					local outY1 = glyphInfo.outY + outDescr.glyphPaddingU
-					local outX2 = outX1 + glyphInfo.inW - 1
-					local outY2 = outY1 + glyphInfo.inH - 1
+				for imageIndex, out_imageData in ipairs(out_imageDatas) do
+					!GET_IMAGE_DATA_POINTER `out_imageData`
 
-					local dx = glyphInfo.inX1 - outX1
-					local dy = glyphInfo.inY1 - outY1
+					for _, glyphInfo in ipairs(glyphs) do
+						if glyphInfo.outImageIndex == imageIndex then
+							local outX1 = glyphInfo.outX + outDescr.glyphPaddingL -- Note: Packed glyphs have no outlines.
+							local outY1 = glyphInfo.outY + outDescr.glyphPaddingU
+							local outX2 = outX1 + glyphInfo.inW - 1
+							local outY2 = outY1 + glyphInfo.inH - 1
 
-					if glyphInfo.outChannel == 1 then
-						for outY = outY1, outY2 do
-							for outX = outX1, outX2 do
-								!GET_PIXEL(`in_imageData`, nil,nil,nil,`a`, `outX+dx`,`outY+dy`)
-								!SET_PIXEL(`out_imageData`, `outX`,`outY`, `a`,nil,nil,nil)
-							end
-						end
-					elseif glyphInfo.outChannel == 2 then
-						for outY = outY1, outY2 do
-							for outX = outX1, outX2 do
-								!GET_PIXEL(`in_imageData`, nil,nil,nil,`a`, `outX+dx`,`outY+dy`)
-								!SET_PIXEL(`out_imageData`, `outX`,`outY`, nil,`a`,nil,nil)
-							end
-						end
-					elseif glyphInfo.outChannel == 3 then
-						for outY = outY1, outY2 do
-							for outX = outX1, outX2 do
-								!GET_PIXEL(`in_imageData`, nil,nil,nil,`a`, `outX+dx`,`outY+dy`)
-								!SET_PIXEL(`out_imageData`, `outX`,`outY`, nil,nil,`a`,nil)
-							end
-						end
-					else--if glyphInfo.outChannel == 4 then
-						for outY = outY1, outY2 do
-							for outX = outX1, outX2 do
-								!GET_PIXEL(`in_imageData`, nil,nil,nil,`a`, `outX+dx`,`outY+dy`)
-								!SET_PIXEL(`out_imageData`, `outX`,`outY`, nil,nil,nil,`a`)
+							local dx = glyphInfo.inX1 - outX1
+							local dy = glyphInfo.inY1 - outY1
+
+							if glyphInfo.outChannel == 1 then
+								for outY = outY1, outY2 do
+									for outX = outX1, outX2 do
+										!GET_PIXEL(`in_imageData`, nil,nil,nil,`a`, `outX+dx`,`outY+dy`)
+										!SET_PIXEL(`out_imageData`, `outX`,`outY`, `a`,nil,nil,nil)
+									end
+								end
+							elseif glyphInfo.outChannel == 2 then
+								for outY = outY1, outY2 do
+									for outX = outX1, outX2 do
+										!GET_PIXEL(`in_imageData`, nil,nil,nil,`a`, `outX+dx`,`outY+dy`)
+										!SET_PIXEL(`out_imageData`, `outX`,`outY`, nil,`a`,nil,nil)
+									end
+								end
+							elseif glyphInfo.outChannel == 3 then
+								for outY = outY1, outY2 do
+									for outX = outX1, outX2 do
+										!GET_PIXEL(`in_imageData`, nil,nil,nil,`a`, `outX+dx`,`outY+dy`)
+										!SET_PIXEL(`out_imageData`, `outX`,`outY`, nil,nil,`a`,nil)
+									end
+								end
+							else--if glyphInfo.outChannel == 4 then
+								for outY = outY1, outY2 do
+									for outX = outX1, outX2 do
+										!GET_PIXEL(`in_imageData`, nil,nil,nil,`a`, `outX+dx`,`outY+dy`)
+										!SET_PIXEL(`out_imageData`, `outX`,`outY`, nil,nil,nil,`a`)
+									end
+								end
 							end
 						end
 					end
@@ -985,7 +1011,7 @@ function love.run()
 
 			else
 				for _, glyphInfo in ipairs(glyphs) do
-					out_imageData:paste(
+					out_imageDatas[glyphInfo.outImageIndex]:paste( -- @Speed?
 						in_imageData,
 						glyphInfo.outX + outDescr.glyphPaddingL + outDescr.outlineWidth, -- dx
 						glyphInfo.outY + outDescr.glyphPaddingU + outDescr.outlineWidth, -- dy
@@ -997,25 +1023,28 @@ function love.run()
 				end
 
 				if outDescr.couldPack then
-					!GET_IMAGE_DATA_POINTER `out_imageData`
+					for _, out_imageData in ipairs(out_imageDatas) do
+						!GET_IMAGE_DATA_POINTER `out_imageData`
 
-					!MAP_PIXEL(`out_imageData`, `x`,`y`)
-						!GET_PIXEL(`out_imageData`, nil,nil,nil,`a`, `x`,`y`)
-						!SET_PIXEL(`out_imageData`, `x`,`y`, 1,1,1,`a`)
-					!MAP_PIXEL_END()
+						!MAP_PIXEL(`out_imageData`, `x`,`y`)
+							!GET_PIXEL(`out_imageData`, nil,nil,nil,`a`, `x`,`y`)
+							!SET_PIXEL(`out_imageData`, `x`,`y`, 1,1,1,`a`)
+						!MAP_PIXEL_END()
+					end
 				end
 			end
 
-			-- out_imageData:mapPixel(function(x,y, r,g,b,a)  return r, g, b, 1  end) -- DEBUG: Show as fully opaque / discard (glyphs in) alpha channel.
+			-- for _, data in ipairs(out_imageDatas) do  data:mapPixel(function(x,y, r,g,b,a)  return r, g, b, 1  end)  end -- DEBUG: Show as fully opaque / discard (glyphs in) alpha channel.
 
 			for _, glyphInfo in ipairs(glyphs) do
 				-- Note that the outlines will overlap when text is rendered.  @Incomplete: This should probably be a setting.
 				table.insert(out_descriptorBuffer, F(
-					'char id=%d x=%d y=%d width=%d height=%d xoffset=0 yoffset=0 xadvance=%d page=0 chnl=%d\n',
+					'char id=%d x=%d y=%d width=%d height=%d xoffset=0 yoffset=0 xadvance=%d page=%d chnl=%d\n',
 					glyphInfo.cp, -- id
 					glyphInfo.outX, glyphInfo.outY, -- x, y
 					glyphInfo.outW, glyphInfo.outH, -- width, height
 					glyphInfo.inW + outDescr.renderSpacing, -- xadvance
+					glyphInfo.outImageIndex-1, -- page
 					(outDescr.pack and 2^(glyphInfo.outChannel-1) or 15) -- chnl
 				))
 			end
@@ -1024,163 +1053,176 @@ function love.run()
 			if outDescr.outlineWidth > 0 then
 				assert(not outDescr.pack)
 
-				local w, h              = out_imageData:getDimensions()
+				local w = out_imageWidth
+				local h = out_imageHeight
+
 				local readonlyImageData = LI.newImageData(w, h)
+				!GET_IMAGE_DATA_POINTER `readonlyImageData`
 
 				local outlineWidth                           = outDescr.outlineWidth
 				local outlineWidthSq                         = outlineWidth^2
 				local outlineR, outlineG, outlineB, outlineA = unpack(outDescr.outlineColor)
 
-				readonlyImageData:paste(out_imageData, 0,0, 0,0, w,h)
+				for _, out_imageData in ipairs(out_imageDatas) do
+					readonlyImageData:paste(out_imageData, 0,0, 0,0, w,h)
 
-				!GET_IMAGE_DATA_POINTER `out_imageData`
-				!GET_IMAGE_DATA_POINTER `readonlyImageData`
+					!GET_IMAGE_DATA_POINTER `out_imageData`
 
-				local min = math.min
-				local max = math.max
+					local min = math.min
+					local max = math.max
 
-				if outlineWidth == 1 then
-					!MAP_PIXEL(`out_imageData`, `x`,`y`)
-						!(
-						GET_PIXEL(`out_imageData`, `r`,`g`,`b`,`a`, `x`,`y`)
+					if outlineWidth == 1 then
+						!MAP_PIXEL(`out_imageData`, `x`,`y`)
+							!(
+							GET_PIXEL(`out_imageData`, `r`,`g`,`b`,`a`, `x`,`y`)
 
-						GET_PIXEL(`readonlyImageData`, nil,nil,nil,`au`,  `    x        `,`max(y-1, 0  )`)
-						GET_PIXEL(`readonlyImageData`, nil,nil,nil,`aur`, `min(x+1, w-1)`,`max(y-1, 0  )`)
-						GET_PIXEL(`readonlyImageData`, nil,nil,nil,`ar`,  `min(x+1, w-1)`,`    y        `)
-						GET_PIXEL(`readonlyImageData`, nil,nil,nil,`adr`, `min(x+1, w-1)`,`min(y+1, h-1)`)
-						GET_PIXEL(`readonlyImageData`, nil,nil,nil,`ad`,  `    x        `,`min(y+1, h-1)`)
-						GET_PIXEL(`readonlyImageData`, nil,nil,nil,`adl`, `max(x-1, 0  )`,`min(y+1, h-1)`)
-						GET_PIXEL(`readonlyImageData`, nil,nil,nil,`al`,  `max(x-1, 0  )`,`    y        `)
-						GET_PIXEL(`readonlyImageData`, nil,nil,nil,`aul`, `max(x-1, 0  )`,`max(y-1, 0  )`)
+							GET_PIXEL(`readonlyImageData`, nil,nil,nil,`au`,  `    x        `,`max(y-1, 0  )`)
+							GET_PIXEL(`readonlyImageData`, nil,nil,nil,`aur`, `min(x+1, w-1)`,`max(y-1, 0  )`)
+							GET_PIXEL(`readonlyImageData`, nil,nil,nil,`ar`,  `min(x+1, w-1)`,`    y        `)
+							GET_PIXEL(`readonlyImageData`, nil,nil,nil,`adr`, `min(x+1, w-1)`,`min(y+1, h-1)`)
+							GET_PIXEL(`readonlyImageData`, nil,nil,nil,`ad`,  `    x        `,`min(y+1, h-1)`)
+							GET_PIXEL(`readonlyImageData`, nil,nil,nil,`adl`, `max(x-1, 0  )`,`min(y+1, h-1)`)
+							GET_PIXEL(`readonlyImageData`, nil,nil,nil,`al`,  `max(x-1, 0  )`,`    y        `)
+							GET_PIXEL(`readonlyImageData`, nil,nil,nil,`aul`, `max(x-1, 0  )`,`max(y-1, 0  )`)
 
-						local DIAGONAL_SIGNIFICANCE = .4
-						)
+							local DIAGONAL_SIGNIFICANCE = .4
+							)
 
-						local neighborAlpha = max(
-							au,
-							aur * !(DIAGONAL_SIGNIFICANCE),
-							ar,
-							adr * !(DIAGONAL_SIGNIFICANCE),
-							ad,
-							adl * !(DIAGONAL_SIGNIFICANCE),
-							al,
-							aul * !(DIAGONAL_SIGNIFICANCE),
-							a
-						)
+							local neighborAlpha = max(
+								au,
+								aur * !(DIAGONAL_SIGNIFICANCE),
+								ar,
+								adr * !(DIAGONAL_SIGNIFICANCE),
+								ad,
+								adl * !(DIAGONAL_SIGNIFICANCE),
+								al,
+								aul * !(DIAGONAL_SIGNIFICANCE),
+								a
+							)
 
-						r = r*a + (1-a)*outlineR
-						g = g*a + (1-a)*outlineG
-						b = b*a + (1-a)*outlineB
-						a = a   + (1-a)*outlineA*neighborAlpha
+							r = r*a + (1-a)*outlineR
+							g = g*a + (1-a)*outlineG
+							b = b*a + (1-a)*outlineB
+							a = a   + (1-a)*outlineA*neighborAlpha
 
-						!SET_PIXEL(`out_imageData`, `x`,`y`, `r`,`g`,`b`,`a`, true)
-						-- !SET_PIXEL(`out_imageData`, `x`,`y`, 1,0,0,`a`, true) -- DEBUG: Show result in mono-color.
-						-- if neighborAlpha == 0 then  !(do SET_PIXEL(`out_imageData`, `x`,`y`, 1,0,0,1, true) end)  end -- DEBUG: Show unaffected pixels.
-					!MAP_PIXEL_END()
+							!SET_PIXEL(`out_imageData`, `x`,`y`, `r`,`g`,`b`,`a`, true)
+							-- !SET_PIXEL(`out_imageData`, `x`,`y`, 1,0,0,`a`, true) -- DEBUG: Show result in mono-color.
+							-- if neighborAlpha == 0 then  !(do SET_PIXEL(`out_imageData`, `x`,`y`, 1,0,0,1, true) end)  end -- DEBUG: Show unaffected pixels.
+						!MAP_PIXEL_END()
 
-				else--if outlineWidth > 1 then -- @Incomplete: Add a setting that forces this method.
-					--
-					-- This doesn't look very good for partially diagonal lines in fonts with smooth
-					-- edges/half-transparent pixels, but there's only so much that can be done when
-					-- all we have are pixels. Maybe we can do something better for TrueType fonts?
-					--
-					!MAP_PIXEL(`out_imageData`, `x`,`y`)
-						---------------------
-						!GET_PIXEL(`out_imageData`, `r`,`g`,`b`,`a`, `x`,`y`)
+					else--if outlineWidth > 1 then -- @Incomplete: Add a setting that forces this method.
+						--
+						-- This doesn't look very good for partially diagonal lines in fonts with smooth
+						-- edges/half-transparent pixels, but there's only so much that can be done when
+						-- all we have are pixels. Maybe we can do something better for TrueType fonts?
+						--
+						!MAP_PIXEL(`out_imageData`, `x`,`y`)
+							---------------------
+							!GET_PIXEL(`out_imageData`, `r`,`g`,`b`,`a`, `x`,`y`)
 
-						local neighborAlpha = a
+							local neighborAlpha = a
 
-						for circleY = max(y-outlineWidth, 0), min(y+outlineWidth, h-1) do
-							for circleX = max(x-outlineWidth, 0), min(x+outlineWidth, w-1) do
-								local distSq = (circleX-x)*(circleX-x) + (circleY-y)*(circleY-y)
+							for circleY = max(y-outlineWidth, 0), min(y+outlineWidth, h-1) do
+								for circleX = max(x-outlineWidth, 0), min(x+outlineWidth, w-1) do
+									local distSq = (circleX-x)*(circleX-x) + (circleY-y)*(circleY-y)
 
-								-- if distSq <= outlineWidthSq then
-									!GET_PIXEL(`readonlyImageData`, nil,nil,nil,`circleA`, `circleX`,`circleY`)
+									-- if distSq <= outlineWidthSq then
+										!GET_PIXEL(`readonlyImageData`, nil,nil,nil,`circleA`, `circleX`,`circleY`)
 
-									-- This doesn't look good in some cases if there are full shapes with half-
-									-- transparent pixels (generally if the font is a bit too thin in places).
-									-- We use the next piece of code instead!
-									-- neighborAlpha = max(neighborAlpha, circleA*min(max(outlineWidth-distSq^.5, 0), 1))
+										-- This doesn't look good in some cases if there are full shapes with half-
+										-- transparent pixels (generally if the font is a bit too thin in places).
+										-- We use the next piece of code instead!
+										-- neighborAlpha = max(neighborAlpha, circleA*min(max(outlineWidth-distSq^.5, 0), 1))
 
-									if circleA > .4 then -- @Hardcoded alpha threshold. (How does e.g. Photoshop create outline effects on layers? I think they use a threshold similar to this.)
-										neighborAlpha = max(neighborAlpha, min(outlineWidth-distSq^.5+1, 1)) -- (Why is +1 needed here for the result to be correct?)
+										if circleA > .4 then -- @Hardcoded alpha threshold. (How does e.g. Photoshop create outline effects on layers? I think they use a threshold similar to this.)
+											neighborAlpha = max(neighborAlpha, min(outlineWidth-distSq^.5+1, 1)) -- (Why is +1 needed here for the result to be correct?)
 
-										-- Maybe something like this would be better than the above? Also, maybe we should
-										-- support float widths for outlines? That would achieve the same effect I think.
-										-- neighborAlpha = max(neighborAlpha, min(max(outlineWidth-distSq^.5-.3, 0), 1))
-									end
-								-- end
+											-- Maybe something like this would be better than the above? Also, maybe we should
+											-- support float widths for outlines? That would achieve the same effect I think.
+											-- neighborAlpha = max(neighborAlpha, min(max(outlineWidth-distSq^.5-.3, 0), 1))
+										end
+									-- end
+								end
 							end
-						end
 
-						r = r*a + (1-a)*outlineR
-						g = g*a + (1-a)*outlineG
-						b = b*a + (1-a)*outlineB
-						a = a   + (1-a)*outlineA*neighborAlpha
+							r = r*a + (1-a)*outlineR
+							g = g*a + (1-a)*outlineG
+							b = b*a + (1-a)*outlineB
+							a = a   + (1-a)*outlineA*neighborAlpha
 
-						!SET_PIXEL(`out_imageData`, `x`,`y`, `r`,`g`,`b`,`a`, true)
-						-- !SET_PIXEL(`out_imageData`, `x`,`y`, 1,0,0,`a`, true) -- DEBUG: Show result in mono-color.
-						-- if neighborAlpha == 0 then  !(do SET_PIXEL(`out_imageData`, `x`,`y`, 1,0,0,1, true) end)  end -- DEBUG: Show unaffected pixels.
-					!MAP_PIXEL_END()
-				end
-			end
+							!SET_PIXEL(`out_imageData`, `x`,`y`, `r`,`g`,`b`,`a`, true)
+							-- !SET_PIXEL(`out_imageData`, `x`,`y`, 1,0,0,`a`, true) -- DEBUG: Show result in mono-color.
+							-- if neighborAlpha == 0 then  !(do SET_PIXEL(`out_imageData`, `x`,`y`, 1,0,0,1, true) end)  end -- DEBUG: Show unaffected pixels.
+						!MAP_PIXEL_END()
+					end
+				end--for out_imageDatas
+			end--if outlineWidth > 0
 
-			-- Try to ensure linear interpolation will work properly when rendering in-game.  @Incomplete: Maybe there should be a setting to skip this step if it's not of importance.
+			--
+			-- Try to ensure linear interpolation will work properly when
+			-- rendering in-game. (Try, because LÖVE currently doesn't do the
+			-- right thing... Maybe someday it will! 2021-03-29)
+			--
+			-- @Incomplete: Maybe there should be a setting to skip this step if it's not of importance.
+			--
 			if not outDescr.couldPack and outDescr.outlineWidth == 0 then
-				local w, h = out_imageData:getDimensions()
-
-				!GET_IMAGE_DATA_POINTER `out_imageData`
+				local w = out_imageWidth
+				local h = out_imageHeight
 
 				local min = math.min
 				local max = math.max
 
-				!MAP_PIXEL(`out_imageData`, `x`,`y`)
-					!GET_PIXEL(`out_imageData`, nil,nil,nil,`a`, `x`,`y`)
+				for _, out_imageData in ipairs(out_imageDatas) do
+					!GET_IMAGE_DATA_POINTER `out_imageData`
 
-					if a == 0 then
-						!(
-						-- Note: We don't need to use a readonlyImageData as we only write to transparent
-						-- pixels and we only read/use values from non-transparent pixels.
-						GET_PIXEL(`out_imageData`, nil,nil,nil,`a1`, `    x        `,`max(y-1, 0  )`)
-						GET_PIXEL(`out_imageData`, nil,nil,nil,`a2`, `min(x+1, w-1)`,`max(y-1, 0  )`)
-						GET_PIXEL(`out_imageData`, nil,nil,nil,`a3`, `min(x+1, w-1)`,`    y        `)
-						GET_PIXEL(`out_imageData`, nil,nil,nil,`a4`, `min(x+1, w-1)`,`min(y+1, h-1)`)
-						GET_PIXEL(`out_imageData`, nil,nil,nil,`a5`, `    x        `,`min(y+1, h-1)`)
-						GET_PIXEL(`out_imageData`, nil,nil,nil,`a6`, `max(x-1, 0  )`,`min(y+1, h-1)`)
-						GET_PIXEL(`out_imageData`, nil,nil,nil,`a7`, `max(x-1, 0  )`,`    y        `)
-						GET_PIXEL(`out_imageData`, nil,nil,nil,`a8`, `max(x-1, 0  )`,`max(y-1, 0  )`)
-						)
+					!MAP_PIXEL(`out_imageData`, `x`,`y`)
+						!GET_PIXEL(`out_imageData`, nil,nil,nil,`a`, `x`,`y`)
 
-						local weightInverted = 1 / (a1 + a2 + a3 + a4 + a5 + a6 + a7 + a8)
-
-						if weightInverted < 1/0 then
+						if a == 0 then
 							!(
 							-- Note: We don't need to use a readonlyImageData as we only write to transparent
 							-- pixels and we only read/use values from non-transparent pixels.
-							GET_PIXEL(`out_imageData`, `r1`,`g1`,`b1`,nil, `    x        `,`max(y-1, 0  )`)
-							GET_PIXEL(`out_imageData`, `r2`,`g2`,`b2`,nil, `min(x+1, w-1)`,`max(y-1, 0  )`)
-							GET_PIXEL(`out_imageData`, `r3`,`g3`,`b3`,nil, `min(x+1, w-1)`,`    y        `)
-							GET_PIXEL(`out_imageData`, `r4`,`g4`,`b4`,nil, `min(x+1, w-1)`,`min(y+1, h-1)`)
-							GET_PIXEL(`out_imageData`, `r5`,`g5`,`b5`,nil, `    x        `,`min(y+1, h-1)`)
-							GET_PIXEL(`out_imageData`, `r6`,`g6`,`b6`,nil, `max(x-1, 0  )`,`min(y+1, h-1)`)
-							GET_PIXEL(`out_imageData`, `r7`,`g7`,`b7`,nil, `max(x-1, 0  )`,`    y        `)
-							GET_PIXEL(`out_imageData`, `r8`,`g8`,`b8`,nil, `max(x-1, 0  )`,`max(y-1, 0  )`)
+							GET_PIXEL(`out_imageData`, nil,nil,nil,`a1`, `    x        `,`max(y-1, 0  )`)
+							GET_PIXEL(`out_imageData`, nil,nil,nil,`a2`, `min(x+1, w-1)`,`max(y-1, 0  )`)
+							GET_PIXEL(`out_imageData`, nil,nil,nil,`a3`, `min(x+1, w-1)`,`    y        `)
+							GET_PIXEL(`out_imageData`, nil,nil,nil,`a4`, `min(x+1, w-1)`,`min(y+1, h-1)`)
+							GET_PIXEL(`out_imageData`, nil,nil,nil,`a5`, `    x        `,`min(y+1, h-1)`)
+							GET_PIXEL(`out_imageData`, nil,nil,nil,`a6`, `max(x-1, 0  )`,`min(y+1, h-1)`)
+							GET_PIXEL(`out_imageData`, nil,nil,nil,`a7`, `max(x-1, 0  )`,`    y        `)
+							GET_PIXEL(`out_imageData`, nil,nil,nil,`a8`, `max(x-1, 0  )`,`max(y-1, 0  )`)
 							)
 
-							local r = (r1*a1 + r2*a2 + r3*a3 + r4*a4 + r5*a5 + r6*a6 + r7*a7 + r8*a8) * weightInverted
-							local g = (g1*a1 + g2*a2 + g3*a3 + g4*a4 + g5*a5 + g6*a6 + g7*a7 + g8*a8) * weightInverted
-							local b = (b1*a1 + b2*a2 + b3*a3 + b4*a4 + b5*a5 + b6*a6 + b7*a7 + b8*a8) * weightInverted
+							local weightInverted = 1 / (a1 + a2 + a3 + a4 + a5 + a6 + a7 + a8)
 
-							!SET_PIXEL(`out_imageData`, `x`,`y`, `r`,`g`,`b`,`a`)
+							if weightInverted < 1/0 then
+								!(
+								-- Note: We don't need to use a readonlyImageData as we only write to transparent
+								-- pixels and we only read/use values from non-transparent pixels.
+								GET_PIXEL(`out_imageData`, `r1`,`g1`,`b1`,nil, `    x        `,`max(y-1, 0  )`)
+								GET_PIXEL(`out_imageData`, `r2`,`g2`,`b2`,nil, `min(x+1, w-1)`,`max(y-1, 0  )`)
+								GET_PIXEL(`out_imageData`, `r3`,`g3`,`b3`,nil, `min(x+1, w-1)`,`    y        `)
+								GET_PIXEL(`out_imageData`, `r4`,`g4`,`b4`,nil, `min(x+1, w-1)`,`min(y+1, h-1)`)
+								GET_PIXEL(`out_imageData`, `r5`,`g5`,`b5`,nil, `    x        `,`min(y+1, h-1)`)
+								GET_PIXEL(`out_imageData`, `r6`,`g6`,`b6`,nil, `max(x-1, 0  )`,`min(y+1, h-1)`)
+								GET_PIXEL(`out_imageData`, `r7`,`g7`,`b7`,nil, `max(x-1, 0  )`,`    y        `)
+								GET_PIXEL(`out_imageData`, `r8`,`g8`,`b8`,nil, `max(x-1, 0  )`,`max(y-1, 0  )`)
+								)
 
-						else
-							!SET_PIXEL(`out_imageData`, `x`,`y`, 0,0,0,`a`) -- Stomp unimportant pixels for hopefully better PNG compression.
+								local r = (r1*a1 + r2*a2 + r3*a3 + r4*a4 + r5*a5 + r6*a6 + r7*a7 + r8*a8) * weightInverted
+								local g = (g1*a1 + g2*a2 + g3*a3 + g4*a4 + g5*a5 + g6*a6 + g7*a7 + g8*a8) * weightInverted
+								local b = (b1*a1 + b2*a2 + b3*a3 + b4*a4 + b5*a5 + b6*a6 + b7*a7 + b8*a8) * weightInverted
+
+								!SET_PIXEL(`out_imageData`, `x`,`y`, `r`,`g`,`b`,`a`)
+
+							else
+								!SET_PIXEL(`out_imageData`, `x`,`y`, 0,0,0,`a`) -- Stomp unimportant pixels for hopefully better PNG compression.
+							end
 						end
-					end
-				!MAP_PIXEL_END()
+					!MAP_PIXEL_END()
+				end--for out_imageDatas
 			end
 
-			-- out_imageData:mapPixel(function(x,y, r,g,b,a)  return r, g, b, 1  end) -- DEBUG: Show as fully opaque.
+			-- for _, data in ipairs(out_imageDatas) do  data:mapPixel(function(x,y, r,g,b,a)  return r, g, b, 1  end)  end -- DEBUG: Show as fully opaque.
 
 			-- Write kernings.
 			local kerningPairs = {}
@@ -1209,18 +1251,36 @@ function love.run()
 			local baseDir = (out_directory ~= "" and out_directory or Path("..", rbmfFile.path):getDirectory())
 
 			if outDescr.filenameImage ~= "" then
-				local pathObj       = Path(outDescr.filenameImage, baseDir)
-				local dir, filename = pathObj:getDirectoryAndFilename()
-
-				printf("Writing image: %s", pathObj:toString())
+				local pathObj           = Path(outDescr.filenameImage, baseDir)
+				local dir, filenameBase = pathObj:getDirectoryAndFilename()
 
 				if not connectToDirectory(dir) then
 					errorLine("Could not access directory '%s'.", dir)
 				end
 
-				local ok, err = out_imageData:encode("png", filename)
-				if not ok then
-					errorLine("Could not write font image '%s'. (%s)", pathObj:toString(), err)
+				for imageIndex, out_imageData in ipairs(out_imageDatas) do
+					local filename = outputImageFilenameBaseToFilename(filenameBase, imageIndex)
+
+					pathObj:setFilename(filename)
+					printf("Writing image: %s", pathObj:toString())
+
+					if not out_imageData:encode("png", filename) then
+						errorLine("Could not write font image '%s'.", pathObj:toString())
+					end
+				end
+
+				-- Delete old extra pages.
+				for imageIndex = #out_imageDatas+1, 2^52 do
+					local filename = outputImageFilenameBaseToFilename(filenameBase, imageIndex)
+
+					if not LF.getInfo(filename, "file") then  break  end
+
+					pathObj:setFilename(filename)
+					printf("Deleting old image: %s", pathObj:toString())
+
+					if not LF.remove(filename) then
+						warning("Could not delete file '%s'.", pathObj:toString())
+					end
 				end
 			end
 
@@ -1289,6 +1349,9 @@ function love.run()
 	end
 	printf("Time:  %.3f seconds", endTime-startTime)
 	printf("Icons: %d", getIconCount())
+	!if DEV then
+	printf("Mem:   %d KiB", collectgarbage"count")
+	!end
 	print!(CMD_SEPARATOR)
 	print()
 

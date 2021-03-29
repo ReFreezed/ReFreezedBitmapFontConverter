@@ -16,11 +16,12 @@
 	fileError, fileWarning, fileAssert
 	getDirectoryItems
 	getFileContents, isFile, eachLine
-	getFilename, getDirectory, getBasename
+	getFilename, getDirectory, getBasename, getBasenameAndExtensionWithDot
 	getIconCodepoint, getIcons, getIconCount, setIconCodepoint, isCodepointInPua
 	getImageContentBounds
 	getUnicodeBlockName
 	normalizePath
+	outputImageFilenameBaseToFilename
 	parseBool, parseNumber, parseInt*, parseUint*, parseUint*Sides
 	print, printf
 	processPathTemplate
@@ -94,7 +95,7 @@ end
 
 function _G.warning(s, ...)
 	_G.warningCount = warningCount + 1
-	io.stderr:write(F("Warning(%d): "..s, warningCount, ...), "\n")
+	io.stderr:write(F("WARNING(%d): "..s, warningCount, ...), "\n")
 end
 
 -- errorLine( message )
@@ -104,7 +105,7 @@ function _G.errorLine(s, ...)
 	!if DEV then
 		error(s, 2)
 	!else
-		io.stderr:write("Error: ", s, "\n")
+		io.stderr:write("ERROR: ", s, "\n")
 		os.exit(1)
 	!end
 end
@@ -120,7 +121,7 @@ function _G.fileError(info, s, ...)
 	!if DEV then
 		error(s, 2)
 	!else
-		io.stderr:write("Error: ", s, "\n\n")
+		io.stderr:write("ERROR: ", s, "\n\n")
 		os.exit(1)
 	!end
 end
@@ -153,7 +154,7 @@ function _G.getDirectoryItems(dir)
 	dir = Path(dir):toString()
 
 	if not connectToDirectory(dir) then
-		errorf("Cannot access directory '%s'.", dir)
+		errorLine("Cannot access directory '%s'.", dir)
 	end
 
 	return LF.getDirectoryItems("")
@@ -178,8 +179,13 @@ function _G.getDirectory(path)
 end
 
 function _G.getBasename(filename)
-	local basename = filename:gsub("%..*$", "")
+	local basename = filename:gsub("%.[^.]+$", "")
 	return basename ~= "" and basename or filename
+end
+
+function _G.getBasenameAndExtensionWithDot(filename)
+	local basename = getBasename(filename)
+	return basename, filename:sub(#basename+1)
 end
 
 
@@ -201,7 +207,7 @@ do
 
 		if     nextPuaCp == 0xF8FF   + 1 then  nextPuaCp = 0xF0000
 		elseif nextPuaCp == 0xFFFFD  + 1 then  nextPuaCp = 0x100000
-		elseif nextPuaCp == 0x10FFFD + 1 then  errorf("Too many icons! Maximum amount is %d.", (0xF8FF-0xE000+1 + 0xFFFFD-0xF0000+1 + 0x10FFFD-0x100000+1))
+		elseif nextPuaCp == 0x10FFFD + 1 then  errorLine("Too many icons! Maximum amount is %d.", (0xF8FF-0xE000+1 + 0xFFFFD-0xF0000+1 + 0x10FFFD-0x100000+1))
 		end
 
 		cp        = nextPuaCp
@@ -501,6 +507,13 @@ function _G.S(count, textSingle, textMulti)
 	return (count == 1)
 	   and (textSingle or "")
 	   or  (textMulti  or "s")
+end
+
+
+
+function _G.outputImageFilenameBaseToFilename(filenameBase, imageIndex)
+	local basename, ext = getBasenameAndExtensionWithDot(filenameBase)
+	return F("%s_%d%s", basename, imageIndex-1, ext)
 end
 
 
