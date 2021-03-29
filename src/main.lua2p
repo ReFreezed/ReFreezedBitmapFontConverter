@@ -93,6 +93,9 @@ local function OutputDescriptor()
 
 		renderSpacing = 1,
 
+		paddingAffectsRenderSpacing = false,
+		outlineAffectsRenderSpacing = false,
+
 		customValues = {--[[ [1]=k1, [k1]=v1, ... ]]},
 		--
 
@@ -394,6 +397,11 @@ function love.run()
 
 				elseif k == "renderSpacing" then
 					currentOutDescr.renderSpacing = fileAssert(rbmfFile, parseInt(v))
+
+				elseif k == "paddingAffectsRenderSpacing" then
+					currentOutDescr.paddingAffectsRenderSpacing = fileAssert(rbmfFile, parseBool(v))
+				elseif k == "outlineAffectsRenderSpacing" then
+					currentOutDescr.outlineAffectsRenderSpacing = fileAssert(rbmfFile, parseBool(v))
 
 				elseif k:find"^custom%.[%a_][%w_]*$" then
 					k = k:sub(8)
@@ -1037,13 +1045,19 @@ function love.run()
 			-- for _, data in ipairs(out_imageDatas) do  data:mapPixel(function(x,y, r,g,b,a)  return r, g, b, 1  end)  end -- DEBUG: Show as fully opaque / discard (glyphs in) alpha channel.
 
 			for _, glyphInfo in ipairs(glyphs) do
-				-- Note that the outlines will overlap when text is rendered.  @Incomplete: This should probably be a setting.
+				local xAdvance = (
+					glyphInfo.inW
+					+ outDescr.renderSpacing
+					+ (outDescr.paddingAffectsRenderSpacing and outDescr.glyphPaddingL+outDescr.glyphPaddingR or 0)
+					+ (outDescr.outlineAffectsRenderSpacing and outDescr.outlineWidth or 0)
+				)
+
 				table.insert(out_descriptorBuffer, F(
 					'char id=%d x=%d y=%d width=%d height=%d xoffset=0 yoffset=0 xadvance=%d page=%d chnl=%d\n',
 					glyphInfo.cp, -- id
 					glyphInfo.outX, glyphInfo.outY, -- x, y
 					glyphInfo.outW, glyphInfo.outH, -- width, height
-					glyphInfo.inW + outDescr.renderSpacing, -- xadvance
+					xAdvance, -- xadvance
 					glyphInfo.outImageIndex-1, -- page
 					(outDescr.pack and 2^(glyphInfo.outChannel-1) or 15) -- chnl
 				))

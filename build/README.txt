@@ -103,9 +103,10 @@ File structure:
     # The [in] section contains some general information about the input image.
     [in]
 
-    # If the image is colored or monochrome. Possible values are 'true' or
-    # 'false'. (Default: true)
-    colored=true
+    # Specify whether the image is colored or monochrome. Monochrome images
+    # may become more optimized. Possible values are 'true' or 'false'.
+    # (Default: true)
+    colored=bool
 
 
     # The [edit] section describes how the input image should be preprocessed
@@ -139,8 +140,8 @@ File structure:
     # (Default: 0, no outline is added)
     outlineWidth=1
 
-    # Color of the outline, if an outline is added by the program. The values
-    # should be numbers between 0 and 1. (Default: 0 0 0 1)
+    # Color of the outline, if one is added. The values should be numbers
+    # between 0 and 1. (Default: 0 0 0 1)
     outlineColor=red green blue alpha
 
     # Extra space around each glyph. Note that when LÖVE renders the text this
@@ -167,7 +168,16 @@ File structure:
 
     # Set the distance between glyphs when rendered (in addition to any
     # kerning). (Default: 1)
-    renderSpacing=offset
+    renderSpacing=spacing
+
+    # Specify whether the padding should affect the distance between glyphs
+    # when rendered. Possible values are 'true' or 'false'. (Default: false)
+    paddingAffectsRenderSpacing=bool
+
+    # Specify whether the outline, if one is added, should affect the distance
+    # between glyphs when rendered. Possible values are 'true' or 'false'.
+    # (Default: false)
+    outlineAffectsRenderSpacing=bool
 
     # You can embed multiple custom values in the outputted BMFont file using
     # this format.
