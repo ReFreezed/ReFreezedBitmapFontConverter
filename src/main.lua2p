@@ -88,8 +88,9 @@ local function OutputDescriptor()
 		imagePaddingH = 0,
 		imagePaddingV = 0,
 
-		outlineWidth = 0,
-		outlineColor = {0,0,0,1},
+		outlineWidth  = 0,
+		outlineColor  = {0,0,0,1},
+		outlineMethod = "auto",
 
 		renderSpacing = 1,
 
@@ -394,6 +395,12 @@ function love.run()
 					currentOutDescr.outlineColor[2] = math.min(math.max(g, 0), 1)
 					currentOutDescr.outlineColor[3] = math.min(math.max(b, 0), 1)
 					currentOutDescr.outlineColor[4] = math.min(math.max(a, 0), 1)
+
+				elseif k == "outlineMethod" then
+					if not (v == "auto" or v == "basic") then
+						fileError(rbmfFile, "Invalid outline method '%s'. (Valid values: auto, basic)", v)
+					end
+					currentOutDescr.outlineMethod = v
 
 				elseif k == "renderSpacing" then
 					currentOutDescr.renderSpacing = fileAssert(rbmfFile, parseInt(v))
@@ -1085,7 +1092,7 @@ function love.run()
 					local min = math.min
 					local max = math.max
 
-					if outlineWidth == 1 then
+					if outlineWidth == 1 and outDescr.outlineMethod ~= "basic" then
 						!MAP_PIXEL(`out_imageData`, `x`,`y`)
 							!(
 							GET_PIXEL(`out_imageData`, `r`,`g`,`b`,`a`, `x`,`y`)
@@ -1124,7 +1131,7 @@ function love.run()
 							-- if neighborAlpha == 0 then  !(do SET_PIXEL(`out_imageData`, `x`,`y`, 1,0,0,1, true) end)  end -- DEBUG: Show unaffected pixels.
 						!MAP_PIXEL_END()
 
-					else--if outlineWidth > 1 then -- @Incomplete: Add a setting that forces this method.
+					else
 						--
 						-- This doesn't look very good for partially diagonal lines in fonts with smooth
 						-- edges/half-transparent pixels, but there's only so much that can be done when

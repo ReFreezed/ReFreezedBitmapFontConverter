@@ -144,6 +144,12 @@ File structure:
     # between 0 and 1. (Default: 0 0 0 1)
     outlineColor=red green blue alpha
 
+    # Method used for creating the outline, if one is added. Possible values
+    # are 'auto' or 'basic'. 'auto' tend to look smoother and nicer for
+    # 1-pixel outlines. Thicker outlines currently always use 'basic'.
+    # (Default: auto)
+    outlineMethod=outlineMethod
+
     # Extra space around each glyph. Note that when LÖVE renders the text this
     # padding will be part of each glyph (i.e. more pixels will be rendered
     # around each character, which may be useful for custom shaders). Also
