@@ -1399,10 +1399,10 @@ function _G.loadOrReload()
 	-- love.graphics.setDefaultFilter("nearest")
 
 	_G.fonts = {
-		love.graphics.newFont("temp/smallPixel.bmfont"),
-		love.graphics.newFont("temp/smallPixel_outline.bmfont"),
-		love.graphics.newFont("temp/vector.bmfont"),
-		love.graphics.newFont("temp/vector_outline.bmfont"),
+		love.graphics.newFont("temp/smallPixel.fnt"),
+		love.graphics.newFont("temp/smallPixel_outline.fnt"),
+		love.graphics.newFont("temp/vector.fnt"),
+		love.graphics.newFont("temp/vector_outline.fnt"),
 	}
 
 	_G.icons = {}

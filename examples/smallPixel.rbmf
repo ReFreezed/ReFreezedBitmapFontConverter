@@ -5,13 +5,13 @@ colored=true
 
 [out]
 fileImage=<name>.png
-fileDescriptor=<name>.bmfont
+fileDescriptor=<name>.fnt
 glyphPadding=1
 custom.lineHeight=1.2
 
 [out]
 fileImage=<name>_outline.png
-fileDescriptor=<name>_outline.bmfont
+fileDescriptor=<name>_outline.fnt
 outlineWidth=1
 outlineColor=1 0 .7 .8
 glyphPadding=1

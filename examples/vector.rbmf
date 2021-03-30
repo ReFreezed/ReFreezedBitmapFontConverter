@@ -12,13 +12,13 @@ fontSize=24
 
 [out]
 fileImage=<name>.png
-fileDescriptor=<name>.bmfont
+fileDescriptor=<name>.fnt
 glyphSpacing=1
 imagePadding=1
 
 [out]
 fileImage=<name>_outline.png
-fileDescriptor=<name>_outline.bmfont
+fileDescriptor=<name>_outline.fnt
 outlineWidth=1
 outlineColor=.9 .7 0 1
 glyphSpacing=1

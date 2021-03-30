@@ -28,6 +28,9 @@ software.
 2. Intro
 ==============================================================================
 
+This program was made as a tool for the LÖVE game framework, but if your game
+understands BMFont files then this program may very well be useful for you.
+
 LÖVE supports two bitmap font formats: AngelCode's BMFont, and its own format.
 
 LÖVE's own font format is very simple but also very limited. The BMFont format
@@ -45,7 +48,7 @@ any coordinates, unlike BMFont).
 3. Command line interface
 ==============================================================================
 
-> RbmfConverter.exe inputPath1 [inputPath2 ...] [options]
+$ RbmfConverter.exe inputPath1 [inputPath2 ...] [options]
 
 Input paths can be font descriptor files or directories with .rbmf files.
 The filenames of outputted files is specified in each font descriptor.
@@ -56,15 +59,15 @@ Options:
     Where to output files. (Default: Same directory as the input.)
 
     --icons <outputFilePath>
-    Where to put the icons file if any icons are specified. (Default:
-    <outputDirectory>/.fonticons)
+    Where to put the icons file if any icons are specified in any of the input
+    files. (Default: <outputDirectory>/.fonticons)
 
     --mergeicons
-    Merge new icons with existing icons if the icons file exists. (Default:
-    Icons file is replaced)
+    Merge new icons with existing icons if the icons file already exists.
+    (Default: Icons file is replaced)
 
     --maxsize <imageSize>
-    Maximim width and height of outputted images. (Default: 2048)
+    Maximum width and height of outputted images. (Default: 2048)
 
     --textfile <filePath1> [--textfile <filePath2> ...]
     Note: Relative paths will be relative to the current working directory,
@@ -131,7 +134,7 @@ File structure:
     # replaced by the descriptor's filename). Required parameter!
     fileImage=filename
 
-    # Filename of the outputted BMFont descriptor, e.g. "<name>.bmfont"
+    # Filename of the outputted BMFont descriptor, e.g. "<name>.fnt"
     # (<name> will be replaced by the .rbmf descriptor's filename). Required
     # parameter!
     fileDescriptor=filename
@@ -150,7 +153,7 @@ File structure:
     # (Default: auto)
     outlineMethod=outlineMethod
 
-    # Extra space around each glyph. Note that when LÖVE renders the text this
+    # Extra space around each glyph. Note that when the text is rendered this
     # padding will be part of each glyph (i.e. more pixels will be rendered
     # around each character, which may be useful for custom shaders). Also
     # note that padding does not affect the distance between characters when
