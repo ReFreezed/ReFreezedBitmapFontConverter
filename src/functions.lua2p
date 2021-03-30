@@ -11,7 +11,7 @@
 
 	addCodepoint
 	addKerningPairs
-	connectToDirectory
+	connectToDirectory, mustConnectToDirectory
 	errorf, warning, errorLine
 	fileError, fileWarning, fileAssert
 	getDirectoryItems
@@ -19,12 +19,14 @@
 	getFilename, getDirectory, getBasename, getBasenameAndExtensionWithDot
 	getIconCodepoint, getIcons, getIconCount, setIconCodepoint, isCodepointInPua
 	getImageContentBounds
+	getLast
 	getUnicodeBlockName
 	normalizePath
 	outputImageFilenameBaseToFilename
 	parseBool, parseNumber, parseInt*, parseUint*, parseUint*Sides
 	print, printf
 	processPathTemplate
+	reservePathForReading, reservePathForWriting
 	S
 	triml, trimr, trim
 
@@ -103,11 +105,11 @@ end
 function _G.errorLine(s, ...)
 	if select("#", ...) > 0 then  s = F(s, ...)  end
 	!if DEV then
-		error(s, 2)
+		io.stderr:write("ERROR: ", debug.traceback(s, 2), "\n\n")
 	!else
-		io.stderr:write("ERROR: ", s, "\n")
-		os.exit(1)
+		io.stderr:write("ERROR: ", s, "\n\n")
 	!end
+	os.exit(1)
 end
 
 
@@ -119,11 +121,11 @@ function _G.fileError(info, s, ...)
 		or  F("%s: "   ..s, getFilename(info.path),          ...)
 	)
 	!if DEV then
-		error(s, 2)
+		io.stderr:write("ERROR: ", debug.traceback(s, 2), "\n\n")
 	!else
 		io.stderr:write("ERROR: ", s, "\n\n")
-		os.exit(1)
 	!end
+	os.exit(1)
 end
 
 function _G.fileWarning(info, s, ...)
@@ -151,12 +153,7 @@ local function cmdCapture(cmd)
 end
 
 function _G.getDirectoryItems(dir)
-	dir = Path(dir):toString()
-
-	if not connectToDirectory(dir) then
-		errorLine("Cannot access directory '%s'.", dir)
-	end
-
+	mustConnectToDirectory(Path(dir):toString())
 	return LF.getDirectoryItems("")
 end
 
@@ -335,9 +332,7 @@ function _G.eachLine(pathObj)
 
 	local dir, filename = pathObj:getDirectoryAndFilename()
 
-	if not connectToDirectory(dir) then
-		errorLine("Could not access directory '%s'.", dir)
-	end
+	mustConnectToDirectory(dir)
 
 	local lineIter = LF.lines(filename)
 	local ln       = 0
@@ -486,6 +481,12 @@ do
 		currentDirectory = dir
 		return true
 	end
+
+	function _G.mustConnectToDirectory(path)
+		if not connectToDirectory(path) then
+			errorLine("Could not access directory '%s'.", path)
+		end
+	end
 end
 
 
@@ -514,6 +515,43 @@ end
 function _G.outputImageFilenameBaseToFilename(filenameBase, imageIndex)
 	local basename, ext = getBasenameAndExtensionWithDot(filenameBase)
 	return F("%s_%d%s", basename, imageIndex-1, ext)
+end
+
+
+
+do
+	local reservedPathsForReading = {}
+	local reservedPathsForWriting = {}
+
+	-- reservePathForReading( path, subjectFormat, value1, ... )
+	function _G.reservePathForReading(path, subjectNew, ...)
+		subjectNew = reservedPathsForReading[path] or subjectNew:format(...)
+
+		local subjectOld = reservedPathsForWriting[path]
+		if subjectOld then
+			errorLine("Path collision for '%s':\n    Old purpose: %s\n    New purpose: %s", path, subjectOld, subjectNew)
+		end
+
+		reservedPathsForReading[path] = subjectNew
+	end
+
+	-- reservePathForWriting( path, subjectFormat, value1, ... )
+	function _G.reservePathForWriting(path, subjectNew, ...)
+		subjectNew = subjectNew:format(...)
+
+		local subjectOld = reservedPathsForReading[path] or reservedPathsForWriting[path]
+		if subjectOld then
+			errorLine("Path collision for '%s':\n    Old purpose: %s\n    New purpose: %s", path, subjectOld, subjectNew)
+		end
+
+		reservedPathsForWriting[path] = subjectNew
+	end
+end
+
+
+
+function _G.getLast(t)
+	return t[#t]
 end
 
 

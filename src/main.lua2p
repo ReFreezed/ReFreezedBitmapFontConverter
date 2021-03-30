@@ -261,6 +261,7 @@ function love.run()
 		end
 
 		printf("Loading RBMF: %s", rbmfFile.path)
+		reservePathForReading(rbmfFile.path, "RBMF descriptor")
 
 		local section         = ""
 		local sectionLines    = {}
@@ -600,11 +601,10 @@ function love.run()
 			local pathObj = Path("..", rbmfFile.path)
 			pathObj:append(rbmfFile.fontFilename)
 
-			if not connectToDirectory(pathObj:getDirectory()) then
-				errorLine("Could not access directory '%s'.", pathObj:getDirectory())
-			end
-
 			printf("Loading vector font: %s", pathObj:toString())
+			reservePathForReading(pathObj:toString(), "input font for '%s'", rbmfFile.path)
+
+			mustConnectToDirectory(pathObj:getDirectory())
 			local font = LG.newFont(pathObj:getFilename(), rbmfFile.fontSize, rbmfFile.fontHinting)
 
 			in_lineHeight = font:getHeight()
@@ -713,7 +713,7 @@ function love.run()
 			LG.setCanvas(nil)
 
 			in_imageData = fontCanvas:newImageData()
-			-- assert(connectToDirectory(LF.getSaveDirectory()), LF.getSaveDirectory()) ; assert(in_imageData:encode("png", "virt_in_image.png")) -- DEBUG
+			-- mustConnectToDirectory(LF.getSaveDirectory()) ; assert(in_imageData:encode("png", "virt_in_image.png")) -- DEBUG
 
 			font:release()
 			fontCanvas:release()
@@ -722,15 +722,15 @@ function love.run()
 		----------------
 
 		else--if rbmfFile.fontFilename == "" then
-			local imagePathObj            = Path(rbmfFile.path)
-			local pathSegments            = imagePathObj.path
-			pathSegments[#pathSegments]   = pathSegments[#pathSegments]:gsub("%.%w+$", "")..".png" -- @Incomplete @Security: Make sure input and output image do not have the same path (or that there are any path collisions).
-			local imageDir, imageFilename = imagePathObj:getDirectoryAndFilename()
+			local imagePathObj = Path(rbmfFile.path)
+			local pathSegments = imagePathObj.path
+			imagePathObj:setFilename(getLast(imagePathObj.path):gsub("%.%w+$", "")..".png")
 
-			if not connectToDirectory(imageDir) then
-				errorLine("Could not access directory '%s'.", imageDir)
-			end
-			in_imageData = LI.newImageData(imageFilename)
+			printf("Loading image: %s", imagePathObj:toString())
+			reservePathForReading(imagePathObj:toString(), "input image for '%s'", rbmfFile.path)
+
+			mustConnectToDirectory(imagePathObj:getDirectory())
+			in_imageData = LI.newImageData(imagePathObj:getFilename())
 
 			-- Get separator line color.
 			!GET_IMAGE_DATA_POINTER `in_imageData`
@@ -754,7 +754,7 @@ function love.run()
 			in_lineHeight = in_lineDist - 1
 
 			if in_lineHeight < 1 then
-				errorLine("%s: Something went wrong when calculating line height. Are borders surrounding the glyphs properly?", imageFilename)
+				errorLine("%s: Something went wrong when calculating line height. Are borders surrounding the glyphs properly?", imagePathObj:getFilename())
 			end
 
 			-- Check if everything fits in the source image like the descriptor says.
@@ -763,7 +763,7 @@ function love.run()
 			if rbmfFile.lastRow > maxRowsInFont then
 				errorLine(
 					"%s: Font descriptor specifies glyphs up to row %d but only %d rows fit. (Line height is %d, image height is %d)",
-					imageFilename, rbmfFile.lastRow, maxRowsInFont, in_lineHeight, in_imageData:getHeight()
+					imagePathObj:getFilename(), rbmfFile.lastRow, maxRowsInFont, in_lineHeight, in_imageData:getHeight()
 				)
 			end
 
@@ -790,7 +790,7 @@ function love.run()
 					if xNext < 0 then
 						errorLine(
 							"%s: Missing glyphs on row %d. (Expected %d, found %d)",
-							imageFilename, row, #cpsOnRow, i-1
+							imagePathObj:getFilename(), row, #cpsOnRow, i-1
 						)
 					end
 
@@ -852,7 +852,7 @@ function love.run()
 		--
 		-- Write output images and descriptors
 		--
-		for _, outDescr in ipairs(rbmfFile.outputDescriptors) do
+		for outIndex, outDescr in ipairs(rbmfFile.outputDescriptors) do
 			-- @Feature: Automatic kerning calculations?
 
 			outDescr.couldPack = not (rbmfFile.isColored or outDescr.outlineWidth > 0)
@@ -1275,16 +1275,14 @@ function love.run()
 				local pathObj           = Path(outDescr.filenameImage, baseDir)
 				local dir, filenameBase = pathObj:getDirectoryAndFilename()
 
-				if not connectToDirectory(dir) then
-					errorLine("Could not access directory '%s'.", dir)
-				end
-
 				for imageIndex, out_imageData in ipairs(out_imageDatas) do
 					local filename = outputImageFilenameBaseToFilename(filenameBase, imageIndex)
-
 					pathObj:setFilename(filename)
-					printf("Writing image: %s", pathObj:toString())
 
+					printf("Writing image: %s", pathObj:toString())
+					reservePathForWriting(pathObj:toString(), "output(%d) image for '%s'", outIndex, rbmfFile.path)
+
+					mustConnectToDirectory(dir)
 					if not out_imageData:encode("png", filename) then
 						errorLine("Could not write font image '%s'.", pathObj:toString())
 					end
@@ -1293,12 +1291,11 @@ function love.run()
 				-- Delete old extra pages.
 				for imageIndex = #out_imageDatas+1, 2^52 do
 					local filename = outputImageFilenameBaseToFilename(filenameBase, imageIndex)
+					pathObj:setFilename(filename)
 
 					if not LF.getInfo(filename, "file") then  break  end
 
-					pathObj:setFilename(filename)
 					printf("Deleting old image: %s", pathObj:toString())
-
 					if not LF.remove(filename) then
 						warning("Could not delete file '%s'.", pathObj:toString())
 					end
@@ -1310,11 +1307,9 @@ function love.run()
 				local dir, filename = pathObj:getDirectoryAndFilename()
 
 				printf("Writing descriptor: %s", pathObj:toString())
+				reservePathForWriting(pathObj:toString(), "output(%d) descriptor for '%s'", outIndex, rbmfFile.path)
 
-				if not connectToDirectory(dir) then
-					errorLine("Could not access directory '%s'.", dir)
-				end
-
+				mustConnectToDirectory(dir)
 				local ok, err = LF.write(filename, table.concat(out_descriptorBuffer))
 				if not ok then
 					errorLine("Could not write font descriptor '%s'. (%s)", pathObj:toString(), err)
@@ -1345,11 +1340,9 @@ function love.run()
 			local dir, filename = pathObj:getDirectoryAndFilename()
 
 			printf("Writing icons file: %s", pathObj:toString())
+			reservePathForWriting(pathObj:toString(), "output icons file")
 
-			if not connectToDirectory(dir) then
-				errorLine("Could not access directory '%s'.", dir)
-			end
-
+			mustConnectToDirectory(dir)
 			local ok, err = LF.write(filename, table.concat(buffer))
 			if not ok then
 				errorLine("Could not write icons file '%s'. (%s)", pathObj:toString(), err)
