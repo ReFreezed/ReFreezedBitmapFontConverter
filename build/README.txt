@@ -255,7 +255,7 @@ File structure:
     # should be 1 pixel closer together.
 
 
-    # Way 2, bothways:
+    # Way 2, both ways:
     bothways=groupA groupB offset
 
     # Example:
