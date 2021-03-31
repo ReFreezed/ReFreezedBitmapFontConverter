@@ -66,6 +66,8 @@ local function RbmfFile()
 
 		useTextFiles   = false,
 		textCodepoints = {--[[ [cp1]=true, ... ]]},
+
+		outDirectory = "",
 	}
 end
 
@@ -364,11 +366,9 @@ function love.run()
 				if k == "fileImage" then
 					local path                    = normalizePath(v ~= "" and v or fileError(rbmfFile, "Path cannot be empty."))
 					currentOutDescr.filenameImage = processPathTemplate(rbmfFile, path)
-					currentOutDescr.pathImage     = Path(currentOutDescr.filenameImage, out_directory):toString()
 				elseif k == "fileDescriptor" then
 					local path                         = normalizePath(v ~= "" and v or fileError(rbmfFile, "Path cannot be empty."))
 					currentOutDescr.filenameDescriptor = processPathTemplate(rbmfFile, path)
-					currentOutDescr.pathDescriptor     = Path(currentOutDescr.filenameDescriptor, out_directory):toString()
 
 				elseif k == "glyphPadding" then
 					currentOutDescr.glyphPaddingU, currentOutDescr.glyphPaddingR, currentOutDescr.glyphPaddingD, currentOutDescr.glyphPaddingL = fileAssert(rbmfFile, parseUint4Sides(v))
@@ -504,7 +504,7 @@ function love.run()
 				rbmfFile.ln = sectionLines[section]
 				fileError(rbmfFile, "Unknown section name '%s'.")
 			end
-		end
+		end--for eachLine(rbmfFile.path)
 		rbmfFile.ln = 0
 
 		if not rbmfFile.outputDescriptors[1] then
@@ -528,19 +528,26 @@ function love.run()
 			fileError(rbmfFile, "No glyphs specified or imported from text files.")
 		end
 
+		rbmfFile.outDirectory = (out_directory ~= "" and out_directory or Path(rbmfFile.path):getDirectory())
+
 		for _, outDescr in ipairs(rbmfFile.outputDescriptors) do
-			if outDescr.filenameImage == "" then
+			if outDescr.filenameImage ~= "" then
+				outDescr.pathImage = Path(outDescr.filenameImage, rbmfFile.outDirectory):toString()
+			else
 				rbmfFile.ln = outDescr.ln
 				fileWarning(rbmfFile, "No image file specified for this output.")
 				rbmfFile.ln = 0
 			end
-			if outDescr.filenameDescriptor == "" then
+
+			if outDescr.filenameDescriptor ~= "" then
+				outDescr.pathDescriptor = Path(outDescr.filenameDescriptor, rbmfFile.outDirectory):toString()
+			else
 				rbmfFile.ln = outDescr.ln
 				fileWarning(rbmfFile, "No descriptor file specified for this output.")
 				rbmfFile.ln = 0
 			end
 		end
-	end
+	end--for rbmfFiles
 
 	--
 	-- Load glyph filter text files
@@ -1269,10 +1276,8 @@ function love.run()
 			end
 
 			-- Save files.
-			local baseDir = (out_directory ~= "" and out_directory or Path("..", rbmfFile.path):getDirectory())
-
 			if outDescr.filenameImage ~= "" then
-				local pathObj           = Path(outDescr.filenameImage, baseDir)
+				local pathObj           = Path(outDescr.filenameImage, rbmfFile.outDirectory)
 				local dir, filenameBase = pathObj:getDirectoryAndFilename()
 
 				for imageIndex, out_imageData in ipairs(out_imageDatas) do
@@ -1303,7 +1308,7 @@ function love.run()
 			end
 
 			if outDescr.filenameDescriptor ~= "" then
-				local pathObj       = Path(outDescr.filenameDescriptor, baseDir)
+				local pathObj       = Path(outDescr.filenameDescriptor, rbmfFile.outDirectory)
 				local dir, filename = pathObj:getDirectoryAndFilename()
 
 				printf("Writing descriptor: %s", pathObj:toString())
@@ -1321,6 +1326,8 @@ function love.run()
 	--
 	-- Write icons file
 	--
+	local wroteIcons = false
+
 	if out_iconsPath ~= "" then
 		local icons = getIcons()
 
@@ -1347,7 +1354,13 @@ function love.run()
 			if not ok then
 				errorLine("Could not write icons file '%s'. (%s)", pathObj:toString(), err)
 			end
+
+			wroteIcons = true
 		end
+	end
+
+	if not wroteIcons then
+		printf("No icons file written.")
 	end
 
 	--

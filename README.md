@@ -20,8 +20,8 @@ This program was made as a tool for the [LÖVE](https://love2d.org/) game
 framework, but if your game engine understands BMFont files then this program
 may very well be useful for you.
 
-See the [full README](build/README.txt) for more information and
-documentation. Also see the [examples](examples) folder.
+See the [full README](https://raw.githubusercontent.com/ReFreezed/ReFreezedBitmapFontConverter/master/build/README.txt)
+for more information and documentation. Also see the [examples](examples) folder.
 
 ## Example
 ```batch

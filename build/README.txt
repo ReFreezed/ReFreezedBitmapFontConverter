@@ -289,7 +289,8 @@ File structure, in addition to the above:
     fontSize=24
 
     # TrueType hinting mode (for anti-aliasing). Possible values are 'normal',
-    # 'light', 'mono' or 'none'. (Default: normal)
+    # 'light', 'none' or 'mono'. 'mono' disables anti-aliasing while the
+    # others control the level of hinting. (Default: normal)
     fontHinting=hintingMode
 
     # Filename of a text file containing all characters you want to rasterize.

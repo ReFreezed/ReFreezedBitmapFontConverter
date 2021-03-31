@@ -8,4 +8,4 @@ Old versions:  https://github.com/love2d/love/releases
 
 Use the program like this:
 
-> path/to/love RbmfConverter.love inputPath1 [inputPath2 ...] [options]
+$ path/to/love RbmfConverter.love inputPath1 [inputPath2 ...] [options]
