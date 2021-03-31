@@ -29,8 +29,9 @@ Also see the [examples](examples) folder.
 $ RbmfConverter.exe fontSources/coolPixelFont.rbmf --outdir fonts
 ```
 
-**Input image:**<br>
-![input font](examples/smallPixel.png)
+**Input image:**
+
+![input font](misc/exampleFont.png)
 
 **Input descriptor:**
 ```ini
