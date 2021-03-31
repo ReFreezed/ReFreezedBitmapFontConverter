@@ -55,7 +55,7 @@ glyphs=ABCDEFGHIJKLMNOPQRSTUVWXYZ
 glyphs=abcdefghijklmnopqrstuvwxyz
 [3]
 glyphs=0123456789
-glyphs= !"#$%&'()*+,-./:;<=>?@[\]^_`{|}~
+glyphs= !#$%&'()*+,-./:;<=>?@[\]^_`{|}~
 
 # Gamepad icons
 [4]
