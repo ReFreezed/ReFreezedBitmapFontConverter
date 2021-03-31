@@ -157,15 +157,15 @@ function love.run()
 	args[1] = args[1] or "--help"
 
 	while args[i] do
-		if not args[i]:find"^%-" then
-			table.insert(in_paths, normalizePath(args[i])) -- Directory or file.
-			i = i+1
-
-		elseif args[i] == "--help" then
+		if args[i] == "--help" or args[i] == "-help" or args[i] == "-?" or args[i]:find"^/[Hh][Ee][Ll][Pp]$" or args[i] == "/?" then
 			print!(CMD_TITLE)
 			print()
 			print((CMD_HELP:gsub("\t", "    ")))
 			return
+
+		elseif not args[i]:find"^%-" then
+			table.insert(in_paths, normalizePath(args[i])) -- Directory or file.
+			i = i+1
 
 		elseif args[i] == "--outdir" then
 			out_directory = args[i+1] or errorLine("Argument: Missing path after '%s'.", args[i])
@@ -225,7 +225,8 @@ function love.run()
 			local rbmfFile = RbmfFile()
 			rbmfFile.path  = path
 			table.insert(rbmfFiles, rbmfFile)
-		else
+
+		elseif isDirectory(path) then
 			for _, filename in ipairs(getDirectoryItems(path)) do
 				if filename:find"%.rbmf$" then
 					local rbmfFile = RbmfFile()
@@ -233,6 +234,9 @@ function love.run()
 					table.insert(rbmfFiles, rbmfFile)
 				end
 			end
+
+		else
+			errorLine("'%s' is not an accessible file nor directory.", path)
 		end
 	end
 

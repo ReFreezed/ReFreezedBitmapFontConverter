@@ -15,7 +15,7 @@
 	errorf, warning, errorLine
 	fileError, fileWarning, fileAssert
 	getDirectoryItems
-	getFileContents, isFile, eachLine
+	getFileContents, isFile, isDirectory, eachLine
 	getFilename, getDirectory, getBasename, getBasenameAndExtensionWithDot
 	getIconCodepoint, getIcons, getIconCount, setIconCodepoint, isCodepointInPua
 	getImageContentBounds
@@ -322,6 +322,14 @@ do
 		return (
 			connectToDirectory(dir)
 			and LF.getInfo(filename, "file", fileInfoDummy) ~= nil
+		)
+	end
+
+	function _G.isDirectory(path)
+		local dir, filename = Path(path):getDirectoryAndFilename()
+		return (
+			connectToDirectory(dir)
+			and LF.getInfo(filename, "directory", fileInfoDummy) ~= nil
 		)
 	end
 end
