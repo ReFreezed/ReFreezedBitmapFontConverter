@@ -8,7 +8,7 @@
 --============================================================]]
 
 local CMD_HELP = [=[
-	> RbmfConverter.exe inputPath1 [inputPath2 ...] [options]
+	$ RbmfConverter.exe inputPath1 [inputPath2 ...] [options]
 
 	Options:
 		--outdir   <outputDirectory>     # Where to output files. (Default: Same directory as the input.)
@@ -428,14 +428,17 @@ function love.run()
 
 			elseif section:find"^%d+$" then
 				if k == "glyphs" then
+					if v == "" then
+						fileError(rbmfFile, "Missing characters.")
+					end
+
 					local row = tonumber(section)
 
 					for _, cp in utf8.codes(v) do
-						if rbmfFile.codepointLines[cp] then
-							fileError(
-								rbmfFile, "Glyph '%s' (codepoint %d) already appeared previously on line %d.",
-								utf8.char(cp), cp, rbmfFile.codepointLines[cp]
-							)
+						if rbmfFile.codepointLines[cp] == ln then
+							fileError(rbmfFile, "Glyph '%s' (codepoint %d) appears multiple times on the line.", utf8.char(cp), cp)
+						elseif rbmfFile.codepointLines[cp] then
+							fileError(rbmfFile, "Glyph '%s' (codepoint %d) already appeared previously on line %d.", utf8.char(cp), cp, rbmfFile.codepointLines[cp])
 						end
 
 						addCodepoint(rbmfFile, row, cp, nil)
@@ -444,13 +447,19 @@ function love.run()
 				else
 					v = trim(v)
 
+					if v == "" then
+						fileError(rbmfFile, "Missing icon names.")
+					end
+
 					if k == "icons" then
 						local row = tonumber(section)
 
 						for icon in v:gmatch"%S+" do
 							local cp = getIconCodepoint(icon)
 
-							if rbmfFile.codepointLines[cp] then
+							if rbmfFile.codepointLines[cp] == ln then
+								fileError(rbmfFile, "Icon '%s' appears multiples times on the line.", icon)
+							elseif rbmfFile.codepointLines[cp] then
 								fileError(rbmfFile, "Icon '%s' already appeared previously on line %d.", icon, rbmfFile.codepointLines[cp])
 							end
 
@@ -508,7 +517,7 @@ function love.run()
 		rbmfFile.ln = 0
 
 		if not rbmfFile.outputDescriptors[1] then
-			fileError(rbmfFile, "No outputs specified.")
+			fileWarning(rbmfFile, "No outputs specified.")
 		end
 
 		if rbmfFile.textFilePaths[1] and rbmfFile.fontFilename == "" then
@@ -714,9 +723,11 @@ function love.run()
 			LG.setBlendMode("alpha", "premultiplied")
 			for _, glyphInfo in ipairs(glyphs) do
 				local c = utf8.char(glyphInfo.cp)
+				LG.setScissor(glyphInfo.inX1, glyphInfo.inY1, glyphInfo.inW, glyphInfo.inH) -- @Bug: Bleeding may happen if fontHinting is 'none'. I wonder how to best fix this... 2021-03-31
 				LG.print(c, glyphInfo.inX1, glyphInfo.inY1)
 			end
 
+			LG.setScissor()
 			LG.setCanvas(nil)
 
 			in_imageData = fontCanvas:newImageData()
@@ -739,11 +750,28 @@ function love.run()
 			mustConnectToDirectory(imagePathObj:getDirectory())
 			in_imageData = LI.newImageData(imagePathObj:getFilename())
 
+			if in_imageData:getWidth() < 2 or in_imageData:getHeight() < 2 then
+				errorLine("%s: Image is too small.", imagePathObj:getFilename())
+			end
+
 			-- Get separator line color.
 			!GET_IMAGE_DATA_POINTER `in_imageData`
 			!GET_PIXEL(`in_imageData`, `sepR`,`sepG`,`sepB`,`sepA`, 0,0)
 
 			-- in_imageData:mapPixel(function()  return sepR,sepG,sepB,sepA  end, 1,0, 1,in_imageData:getHeight()) -- DEBUG: Test border that is multiple pixels thick.
+
+			-- Look for top and left border.
+			do
+				!GET_PIXEL(`in_imageData`, `r1`,`g1`,`b1`,`a1`, 1,0)
+				!GET_PIXEL(`in_imageData`, `r2`,`g2`,`b2`,`a2`, 0,1)
+
+				if not (
+					r1 == sepR and g1 == sepG and b1 == sepB and a1 == sepA and
+					r2 == sepR and g2 == sepG and b2 == sepB and a2 == sepA
+				) then
+					errorLine("%s: Borders are incorrect.", imagePathObj:getFilename())
+				end
+			end
 
 			-- Get line height and distance.
 			-- LineDistance = SeparatorHeight + LineHeight
@@ -885,8 +913,9 @@ function love.run()
 				local is = {--[[r]]1,  --[[g]]1,  --[[b]]1,  --[[a]]1 }
 
 				local out_pageCount = 1
+				local glyphCount    = {0}
 
-				for i, glyphInfo in ipairs(glyphs) do
+				for _, glyphInfo in ipairs(glyphs) do
 					local wPadded = glyphInfo.inW + 2*outDescr.outlineWidth + outDescr.glyphPaddingL+outDescr.glyphPaddingR
 					local hPadded = glyphInfo.inH + 2*outDescr.outlineWidth + outDescr.glyphPaddingU+outDescr.glyphPaddingD
 
@@ -898,7 +927,7 @@ function love.run()
 						if isPositionEarlier(is[4],xs[4],ys[4], is[channel],xs[channel],ys[channel]) then  channel = 4  end
 					end
 
-					if xs[channel]+wPadded > out_imageMaxSize-outDescr.imagePaddingH and i > 1 then
+					if xs[channel]+wPadded > out_imageMaxSize-outDescr.imagePaddingH and glyphCount[is[channel]] then
 						xs[channel] = x0
 						ys[channel] = ys[channel] + hPadded + outDescr.glyphSpacingV
 
@@ -920,7 +949,8 @@ function love.run()
 					out_imageHeight = math.max(out_imageHeight, ys[channel]+hPadded)
 					out_pageCount   = math.max(out_pageCount,   is[channel])
 
-					xs[channel] = xs[channel] + wPadded + outDescr.glyphSpacingH
+					xs[channel]             = xs[channel] + wPadded + outDescr.glyphSpacingH
+					glyphCount[is[channel]] = (glyphCount[is[channel]] or 0) + 1
 				end
 
 				out_imageWidth  = out_imageWidth  + outDescr.imagePaddingH
@@ -936,7 +966,7 @@ function love.run()
 				if out_imageWidth > out_imageMaxSize or out_imageHeight > out_imageMaxSize then
 					errorLine(
 						"Image '%s' need a bigger size limit than %dx%d. (The size is %dx%d)",
-						Path(outDescr.pathImage):toString(), out_imageMaxSize, out_imageMaxSize, out_imageWidth, out_imageHeight
+						outDescr.pathImage, out_imageMaxSize, out_imageMaxSize, out_imageWidth, out_imageHeight
 					)
 				end
 

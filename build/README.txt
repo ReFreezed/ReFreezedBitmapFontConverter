@@ -301,11 +301,18 @@ File structure, in addition to the above:
     textFile=filename1
     textFile=filename2
 
-    # The row number doesn't matter for vector fonts - all characters can be
-    # put on the same row! Note that icons don't work for vector fonts.
+    # The row number doesn't matter for vector fonts as there's no concept of
+    # a "row", so it's fine to put all characters under the same row number
+    # (e.g. 1).
     [1]
     chars=ABCDEFGHIJKLMNOPQRSTUVWXYZÅÄÖÜ
     chars=abcdefghijklmnopqrstuvwxyzåäöü
+
+    # Note that icons don't work for vector fonts.
+
+    # Also, the program currently doesn't use any kerning information from
+    # vector fonts - that information will have to added manually just like
+    # for bitmap fonts.
 
 
 
