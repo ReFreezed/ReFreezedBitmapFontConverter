@@ -3,7 +3,7 @@
 This command line program converts a simple custom bitmap font format to AngelCode's [BMFont](http://www.angelcode.com/products/bmfont/doc/file_format.html).
 There is also some basic support for rasterizing TrueType/OpenType fonts.
 
-The ReFreezed Bitmap Font consists of two files: a image with all the glyphs
+The ReFreezed Bitmap Font consists of two files: an image with all the glyphs
 separated by a border, and a text file (descriptor) that specifies what glyphs
 are in the image (but not any coordinates, unlike BMFont).
 
