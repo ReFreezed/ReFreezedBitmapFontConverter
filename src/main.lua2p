@@ -7,6 +7,8 @@
 --=
 --============================================================]]
 
+!if not TEST then
+
 local CMD_HELP = [=[
 	$ RbmfConverter.exe inputPath1 [inputPath2 ...] [options]
 
@@ -22,10 +24,6 @@ local CMD_HELP = [=[
 		The filenames of outputted files is specified in the font descriptor.
 		Relative --textfile paths will be relative to CWD, unlike the 'textFile' input parameter in the descriptor.
 ]=]
-
-
-
-!if not TEST then
 
 !local CMD_TITLE     = "ReFreezed Bitmap Font converter "..getReleaseVersion()
 !local CMD_SEPARATOR = string.rep("-", #CMD_TITLE)
@@ -53,7 +51,8 @@ local function RbmfFile()
 
 		textFilePaths = {--[[ path1, ... ]]},
 
-		editAlphaThreshold = 0, -- 0 means no cleaning of font pixels.
+		editAlphaThreshold = 0, -- 0 means we don't do this edit.
+		editTrimGlyphs     = true,
 
 		outputDescriptors = {--[[ outputDescriptor1, ... ]]},
 
@@ -107,6 +106,33 @@ local function OutputDescriptor()
 
 		couldPack = false,
 		pack      = false,
+	}
+end
+
+local function GlyphInfo(cp)
+	return {
+		cp = cp,
+
+		inX1 = 0,
+		inY1 = 0,
+		inX2 = 0,
+		inY2 = 0,
+
+		inW = 0, -- inX2-inX1+1
+		inH = 0, -- inY2-inY1+1
+
+		inW0 = 0, -- Untrimmed width.
+
+		inOffsetX = 0, -- How much was trimmed on the left.
+		inOffsetY = 0, -- How much was trimmed on the top.
+
+		outImageIndex = 1,
+		outChannel    = 1,
+
+		outW = 0,
+		outH = 0,
+		outX = 0,
+		outY = 0,
 	}
 end
 
@@ -357,6 +383,9 @@ function love.run()
 					if rbmfFile.editAlphaThreshold < 0 or rbmfFile.editAlphaThreshold > 1 then
 						fileError(rbmfFile, "Alpha threshold must be between 0 and 1. (Value is '%s')", v)
 					end
+
+				elseif k == "trim" then
+					rbmfFile.editTrimGlyphs = fileAssert(rbmfFile, parseBool(v))
 
 				else
 					fileError(rbmfFile, "Unknown [%s] key '%s'.", section, k)
@@ -634,13 +663,12 @@ function love.run()
 			local missingCps = {}
 
 			for cp in pairs(rbmfFile.textCodepoints) do -- textCodepoints should be empty if useTextFiles is unset.
-				if not font:hasGlyphs(utf8.char(cp)) then
+				if font:hasGlyphs(utf8.char(cp)) then
+					table.insert(glyphs, GlyphInfo(cp))
+				else
 					local blockName       = getUnicodeBlockName(cp)
 					missingCps[blockName] = missingCps[blockName] or {}
 					table.insert(missingCps[blockName], cp)
-				else
-					local glyphInfo = {cp=cp, inX1=nil, inY1=nil, inX2=nil, inY2=nil, inW=nil, inH=nil}
-					table.insert(glyphs, glyphInfo)
 				end
 			end
 
@@ -648,13 +676,12 @@ function love.run()
 				for _, cp in ipairs(cpsOnRow) do
 					if rbmfFile.textCodepoints[cp] then
 						-- void
-					elseif not font:hasGlyphs(utf8.char(cp)) then
+					elseif font:hasGlyphs(utf8.char(cp)) then
+						table.insert(glyphs, GlyphInfo(cp))
+					else
 						local blockName       = getUnicodeBlockName(cp)
 						missingCps[blockName] = missingCps[blockName] or {}
 						table.insert(missingCps[blockName], cp)
-					else
-						local glyphInfo = {cp=cp, inX1=nil, inY1=nil, inX2=nil, inY2=nil, inW=nil, inH=nil}
-						table.insert(glyphs, glyphInfo)
 					end
 				end
 			end
@@ -706,8 +733,9 @@ function love.run()
 				glyphInfo.inX2 = x2
 				glyphInfo.inY1 = y1
 				glyphInfo.inY2 = y2
-				glyphInfo.inW  = x2 - x1 + 1
-				glyphInfo.inH  = y2 - y1 + 1
+				glyphInfo.inW  = w
+				glyphInfo.inH  = in_lineHeight
+				glyphInfo.inW0 = glyphInfo.inW
 
 				virtual_imageWidth = math.max(virtual_imageWidth, x2+1)
 				x1                 = x2 + 1
@@ -836,7 +864,14 @@ function love.run()
 					x = xNext
 
 					if not (textCps and not textCps[cp]) then
-						local glyphInfo = {cp=cp, inX1=glyphStartX, inY1=y, inX2=x-1, inY2=y+in_lineDist-2, inW=x-glyphStartX, inH=in_lineHeight}
+						local glyphInfo = GlyphInfo(cp)
+						glyphInfo.inX1  = glyphStartX
+						glyphInfo.inY1  = y
+						glyphInfo.inX2  = x - 1
+						glyphInfo.inY2  = y + in_lineDist - 2
+						glyphInfo.inW   = x - glyphStartX
+						glyphInfo.inH   = in_lineHeight
+						glyphInfo.inW0  = glyphInfo.inW
 						table.insert(glyphs, glyphInfo)
 					end
 
@@ -852,38 +887,50 @@ function love.run()
 			fileError(rbmfFile, "No glyphs to export.")
 		end
 
-		table.sort(glyphs, function(a, b)
-			return a.cp < b.cp
-		end)
-
 		--
 		-- Edit input image
 		--
 		if rbmfFile.editAlphaThreshold > 0 then
 			-- Need to @Revise all this! 2021-03-21
+			local threshold = rbmfFile.editAlphaThreshold
+
 			local function applyAlphaThreshold(x,y, r,g,b,a)
-				return r, g, b, (a >= rbmfFile.editAlphaThreshold and 1 or 0)
+				return r, g, b, (a >= threshold and 1 or 0)
 			end
 
 			for _, glyphInfo in ipairs(glyphs) do
-				local outerX1, outerX2, outerY1, outerY2 = getImageContentBounds(in_imageData, glyphInfo.inX1, glyphInfo.inY1, glyphInfo.inX2, glyphInfo.inY2, .0001)
-				-- local outerX1, outerX2, outerY1, outerY2 = getImageContentBounds(in_imageData, glyphInfo.inX1, glyphInfo.inY1, glyphInfo.inX2, glyphInfo.inY2, 1) -- This doesn't seem right?
+				local x1, x2, y1, y2 = getImageContentBounds(in_imageData, glyphInfo.inX1, glyphInfo.inY1, glyphInfo.inX2, glyphInfo.inY2, .0001)
+				if x1 then
+					in_imageData:mapPixel(applyAlphaThreshold, x1,y1, x2-x1+1,y2-y1+1) -- @Speed
+				end
+			end
+		end
 
-				if outerX1 then
-					--[[ Nah, this all messes stuff up.
-					local innerX1, innerX2, innerY1, innerY2 = getImageContentBounds(in_imageData, outerX1, outerY1, outerX2, outerY2, 1/128)
-					if not innerX1 then
-						innerX1, innerX2, innerY1, innerY2 = outerX1, outerX2, outerY1, outerY2
-					end
+		--
+		-- Trim glyphs
+		--
+		if rbmfFile.editTrimGlyphs then
+			for _, glyphInfo in ipairs(glyphs) do
+				local x1, x2, y1, y2 = getImageContentBounds(in_imageData, glyphInfo.inX1, glyphInfo.inY1, glyphInfo.inX2, glyphInfo.inY2, .0001)
 
-					print("measure pre ", glyphInfo.cp, glyphInfo.inX2-glyphInfo.inX1)
-					glyphInfo.inX1 = glyphInfo.inX1 + innerX1 - outerX1
-					glyphInfo.inX2 = glyphInfo.inX2 + innerX2 - outerX2
-					glyphInfo.inW  = glyphInfo.inX2 - glyphInfo.inX1 + 1
-					print("measure post", glyphInfo.cp, glyphInfo.inX2-glyphInfo.inX1)
-					--]]
+				if not x1 then
+					glyphInfo.inX1 = 0
+					glyphInfo.inY1 = 0
+					glyphInfo.inX2 = 0
+					glyphInfo.inY2 = 0
+					glyphInfo.inW  = 0
+					glyphInfo.inH  = 0
 
-					in_imageData:mapPixel(applyAlphaThreshold, outerX1,outerY1, outerX2-outerX1+1,outerY2-outerY1+1) -- @Speed
+				else
+					glyphInfo.inOffsetX = x1 - glyphInfo.inX1
+					glyphInfo.inOffsetY = y1 - glyphInfo.inY1
+
+					glyphInfo.inX1 = x1
+					glyphInfo.inX2 = x2
+					glyphInfo.inY1 = y1
+					glyphInfo.inY2 = y2
+					glyphInfo.inW  = x2 - x1 + 1
+					glyphInfo.inH  = y2 - y1 + 1
 				end
 			end
 		end
@@ -891,6 +938,12 @@ function love.run()
 		--
 		-- Write output images and descriptors
 		--
+		table.sort(glyphs, function(a, b)
+			if a.inH ~= b.inH then  return a.inH > b.inH  end
+			if a.inW ~= b.inW then  return a.inW > b.inW  end
+			return a.cp < b.cp
+		end)
+
 		for outIndex, outDescr in ipairs(rbmfFile.outputDescriptors) do
 			-- @Feature: Automatic kerning calculations?
 
@@ -912,49 +965,55 @@ function love.run()
 				local x0 = outDescr.imagePaddingH
 				local y0 = outDescr.imagePaddingV
 
-				local xs = {--[[r]]x0, --[[g]]x0, --[[b]]x0, --[[a]]x0}
-				local ys = {--[[r]]y0, --[[g]]y0, --[[b]]y0, --[[a]]y0}
-				local is = {--[[r]]1,  --[[g]]1,  --[[b]]1,  --[[a]]1 }
+				local xs      = {--[[r]]x0, --[[g]]x0, --[[b]]x0, --[[a]]x0}
+				local ys      = {--[[r]]y0, --[[g]]y0, --[[b]]y0, --[[a]]y0}
+				local maxYs   = {--[[r]]y0, --[[g]]y0, --[[b]]y0, --[[a]]y0}
+				local indices = {--[[r]]1,  --[[g]]1,  --[[b]]1,  --[[a]]1 }
 
 				local out_pageCount = 1
-				local glyphCount    = {0}
+				local hasGlyphs     = {--[[ [pageIndex1]=true, ... ]]} -- Per page.
 
 				for _, glyphInfo in ipairs(glyphs) do
-					local wPadded = glyphInfo.inW + 2*outDescr.outlineWidth + outDescr.glyphPaddingL+outDescr.glyphPaddingR
-					local hPadded = glyphInfo.inH + 2*outDescr.outlineWidth + outDescr.glyphPaddingU+outDescr.glyphPaddingD
+					if glyphInfo.inW > 0 then
+						local wPadded = glyphInfo.inW + 2*outDescr.outlineWidth + outDescr.glyphPaddingL+outDescr.glyphPaddingR
+						local hPadded = glyphInfo.inH + 2*outDescr.outlineWidth + outDescr.glyphPaddingU+outDescr.glyphPaddingD
 
-					local channel = 1
+						local channel = 1
 
-					if outDescr.pack then
-						if isPositionEarlier(is[2],xs[2],ys[2], is[channel],xs[channel],ys[channel]) then  channel = 2  end
-						if isPositionEarlier(is[3],xs[3],ys[3], is[channel],xs[channel],ys[channel]) then  channel = 3  end
-						if isPositionEarlier(is[4],xs[4],ys[4], is[channel],xs[channel],ys[channel]) then  channel = 4  end
-					end
-
-					if xs[channel]+wPadded > out_imageMaxSize-outDescr.imagePaddingH and glyphCount[is[channel]] then
-						xs[channel] = x0
-						ys[channel] = ys[channel] + hPadded + outDescr.glyphSpacingV
-
-						if ys[channel]+hPadded > out_imageMaxSize-outDescr.imagePaddingV then
-							ys[channel] = y0
-							is[channel] = is[channel] + 1
+						if outDescr.pack then
+							if isPositionEarlier(indices[2],xs[2],ys[2], indices[channel],xs[channel],ys[channel]) then  channel = 2  end
+							if isPositionEarlier(indices[3],xs[3],ys[3], indices[channel],xs[channel],ys[channel]) then  channel = 3  end
+							if isPositionEarlier(indices[4],xs[4],ys[4], indices[channel],xs[channel],ys[channel]) then  channel = 4  end
 						end
+
+						if xs[channel]+wPadded > out_imageMaxSize-outDescr.imagePaddingH and hasGlyphs[indices[channel]] then
+							xs[channel] = x0
+							ys[channel] = maxYs[channel] + 1 + outDescr.glyphSpacingV
+
+							if ys[channel]+hPadded > out_imageMaxSize-outDescr.imagePaddingV then
+								ys[channel]      = y0
+								maxYs[channel]   = y0
+								indices[channel] = indices[channel] + 1
+							end
+						end
+
+						glyphInfo.outChannel    = channel
+						glyphInfo.outImageIndex = indices[channel]
+
+						glyphInfo.outW = wPadded
+						glyphInfo.outH = hPadded
+						glyphInfo.outX = xs[channel]
+						glyphInfo.outY = ys[channel]
+
+						out_imageWidth  = math.max(out_imageWidth,  xs[channel]+wPadded)
+						out_imageHeight = math.max(out_imageHeight, ys[channel]+hPadded)
+						out_pageCount   = math.max(out_pageCount,   indices[channel])
+
+						xs[channel]    = xs[channel] + wPadded + outDescr.glyphSpacingH
+						maxYs[channel] = math.max(maxYs[channel], ys[channel]+hPadded-1)
+
+						hasGlyphs[indices[channel]] = true
 					end
-
-					glyphInfo.outChannel    = channel
-					glyphInfo.outImageIndex = is[channel]
-
-					glyphInfo.outW = wPadded
-					glyphInfo.outH = hPadded
-					glyphInfo.outX = xs[channel]
-					glyphInfo.outY = ys[channel]
-
-					out_imageWidth  = math.max(out_imageWidth,  xs[channel]+wPadded)
-					out_imageHeight = math.max(out_imageHeight, ys[channel]+hPadded)
-					out_pageCount   = math.max(out_pageCount,   is[channel])
-
-					xs[channel]             = xs[channel] + wPadded + outDescr.glyphSpacingH
-					glyphCount[is[channel]] = (glyphCount[is[channel]] or 0) + 1
 				end
 
 				out_imageWidth  = out_imageWidth  + outDescr.imagePaddingH
@@ -977,7 +1036,7 @@ function love.run()
 				for imageIndex = 1, out_pageCount do
 					out_imageDatas[imageIndex] = LI.newImageData(out_imageWidth, out_imageHeight)
 				end
-			end
+			end--do
 
 			local out_descriptorBuffer = {}
 
@@ -1001,7 +1060,7 @@ function love.run()
 			table.insert(out_descriptorBuffer, F(
 				'common lineHeight=%d base=%d scaleW=%d scaleH=%d pages=%d packed=%d alphaChnl=0 redChnl=0 greenChnl=0 blueChnl=0\n',
 				in_lineHeight, -- lineHeight
-				in_lineHeight, -- base
+				in_lineHeight, -- base  @Incomplete: Some way of specifying this. (Probably low priority.)
 				out_imageWidth, out_imageHeight, -- scaleW, scaleH
 				#out_imageDatas, -- pages
 				(outDescr.pack and 1 or 0) -- packed
@@ -1023,7 +1082,7 @@ function love.run()
 					!GET_IMAGE_DATA_POINTER `out_imageData`
 
 					for _, glyphInfo in ipairs(glyphs) do
-						if glyphInfo.outImageIndex == imageIndex then
+						if glyphInfo.outImageIndex == imageIndex and glyphInfo.outW > 0 then
 							local outX1 = glyphInfo.outX + outDescr.glyphPaddingL -- Note: Packed glyphs have no outlines.
 							local outY1 = glyphInfo.outY + outDescr.glyphPaddingU
 							local outX2 = outX1 + glyphInfo.inW - 1
@@ -1067,15 +1126,17 @@ function love.run()
 
 			else
 				for _, glyphInfo in ipairs(glyphs) do
-					out_imageDatas[glyphInfo.outImageIndex]:paste( -- @Speed?
-						in_imageData,
-						glyphInfo.outX + outDescr.glyphPaddingL + outDescr.outlineWidth, -- dx
-						glyphInfo.outY + outDescr.glyphPaddingU + outDescr.outlineWidth, -- dy
-						glyphInfo.inX1, -- sx
-						glyphInfo.inY1, -- sy
-						glyphInfo.inW,  -- sw
-						glyphInfo.inH   -- sh
-					)
+					if glyphInfo.outW > 0 then
+						out_imageDatas[glyphInfo.outImageIndex]:paste(
+							in_imageData,
+							glyphInfo.outX + outDescr.glyphPaddingL + outDescr.outlineWidth, -- dx
+							glyphInfo.outY + outDescr.glyphPaddingU + outDescr.outlineWidth, -- dy
+							glyphInfo.inX1, -- sx
+							glyphInfo.inY1, -- sy
+							glyphInfo.inW,  -- sw
+							glyphInfo.inH   -- sh
+						)
+					end
 				end
 
 				if outDescr.couldPack then
@@ -1094,17 +1155,17 @@ function love.run()
 
 			for _, glyphInfo in ipairs(glyphs) do
 				local xAdvance = (
-					glyphInfo.inW
+					glyphInfo.inW0
 					+ outDescr.renderSpacing
 					+ (outDescr.paddingAffectsRenderSpacing and outDescr.glyphPaddingL+outDescr.glyphPaddingR or 0)
 					+ (outDescr.outlineAffectsRenderSpacing and outDescr.outlineWidth or 0)
 				)
-
 				table.insert(out_descriptorBuffer, F(
-					'char id=%d x=%d y=%d width=%d height=%d xoffset=0 yoffset=0 xadvance=%d page=%d chnl=%d\n',
+					'char id=%d x=%d y=%d width=%d height=%d xoffset=%d yoffset=%d xadvance=%d page=%d chnl=%d\n',
 					glyphInfo.cp, -- id
 					glyphInfo.outX, glyphInfo.outY, -- x, y
 					glyphInfo.outW, glyphInfo.outH, -- width, height
+					glyphInfo.inOffsetX, glyphInfo.inOffsetY, -- xoffset, yoffset
 					xAdvance, -- xadvance
 					glyphInfo.outImageIndex-1, -- page
 					(outDescr.pack and 2^(glyphInfo.outChannel-1) or 15) -- chnl

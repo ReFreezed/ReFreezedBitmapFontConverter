@@ -122,6 +122,10 @@ File structure:
     # (Default: 0, which means pixels are not edited)
     alphaThreshold=threshold
 
+    # Specify whether transparent pixels should be trimmed away from glyphs.
+    # Possible values are 'true' or 'false'. (Default: true)
+    trim=bool
+
 
     # [out] sections (of which there can be multiple) specifies how the font
     # should be processed, outputted and finally rendered. One .rbmf

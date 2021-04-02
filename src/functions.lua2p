@@ -250,40 +250,30 @@ end
 -- x1, x2, y1, y2 = getImageContentBounds( imageData, x1, y1, x2, y2, alphaThreshold )
 -- Returns nil if the whole area is empty.
 function _G.getImageContentBounds(imageData, x1, y1, x2, y2, threshold)
-	local hasContent = false
-
-	for y = y1, y2 do
-		for x = x1, x2 do
-			local _, _, _, a = imageData:getPixel(x, y) -- @Speed
-
-			if a >= threshold then
-				hasContent = true
-				break
-			end
-		end
-
-		if hasContent then  break  end
-	end
-
-	if not hasContent then  return nil  end
+	!GET_IMAGE_DATA_POINTER `imageData`
 
 	local cx1 =  1/0
 	local cx2 = -1/0
 	local cy1 =  1/0
 	local cy2 = -1/0
 
+	local min = math.min
+	local max = math.max
+
 	for y = y1, y2 do
 		for x = x1, x2 do
-			local _, _, _, a = imageData:getPixel(x, y) -- @Speed
+			!GET_PIXEL(`imageData`, nil,nil,nil,`a`, `x`,`y`)
 
 			if a >= threshold then
-				cx1 = math.min(cx1, x)
-				cx2 = math.max(cx2, x)
-				cy1 = math.min(cy1, y)
-				cy2 = math.max(cy2, y)
+				cx1 = min(cx1, x)
+				cx2 = max(cx2, x)
+				cy1 = min(cy1, y)
+				cy2 = max(cy2, y)
 			end
 		end
 	end
+
+	if cx1 == 1/0 then  return nil  end
 
 	return cx1, cx2, cy1, cy2
 end
