@@ -91,12 +91,15 @@ local function OutputDescriptor()
 
 		outlineWidth  = 0,
 		outlineColor  = {0,0,0,1},
-		outlineMethod = "auto",
+		outlineMethod = "auto", -- "auto"|"basic"
 
 		renderSpacing = 1,
 
 		paddingAffectsRenderSpacing = false,
 		outlineAffectsRenderSpacing = false,
+
+		imageBounds   = "smallest", -- "smallest"|"poweroftwo"|"poweroftwosquare"
+		imageEncoding = "png",      -- "png"|"tga"
 
 		customValues = {--[[ [1]=k1, [k1]=v1, ... ]]},
 		--
@@ -200,7 +203,7 @@ function love.run()
 
 		elseif args[i] == "--maxsize" then
 			local v          = args[i+1] or errorLine("Argument: Missing number after '%s'.", args[i])
-			out_imageMaxSize = tonumber(v:match"^%-?%d+$") or errorLine("Argument: '%s' is not an integer.", v)
+			out_imageMaxSize = tonumber(v:match"^%d+$") or errorLine("Argument: '%s' is not an unsigned integer.", v)
 			if out_imageMaxSize < 1 then
 				errorLine("--maxsize must be positive.")
 			end
@@ -443,6 +446,25 @@ function love.run()
 					currentOutDescr.paddingAffectsRenderSpacing = fileAssert(rbmfFile, parseBool(v))
 				elseif k == "outlineAffectsRenderSpacing" then
 					currentOutDescr.outlineAffectsRenderSpacing = fileAssert(rbmfFile, parseBool(v))
+
+				elseif k == "imageBounds" then
+					if not (v == "smallest" or v == "poweroftwo" or v == "poweroftwosquare") then
+						fileError(rbmfFile, "Invalid image shape '%s'. (Valid values: smallest, poweroftwo, poweroftwosquare)", v)
+					end
+					if v == "poweroftwo" or v == "poweroftwosquare" then
+						local acceptedSize = 2 ^ math.ceil(math.log(out_imageMaxSize) / math.log(2))
+						if out_imageMaxSize ~= acceptedSize then
+							-- @UX: Automatically calculate the biggest power-of-two size that fits in out_imageMaxSize.
+							fileError(rbmfFile, "Specified --maxsize must be power-of-two for '%s' to work. (It is %d)", v, out_imageMaxSize)
+						end
+					end
+					currentOutDescr.imageBounds = v
+
+				elseif k == "imageEncoding" then
+					if not (v == "png" or v == "tga") then
+						fileError(rbmfFile, "Invalid image encoding '%s'. (Valid values: png, tga)", v)
+					end
+					currentOutDescr.imageEncoding = v
 
 				elseif k:find"^custom%.[%a_][%w_]*$" then
 					k = k:sub(8)
@@ -950,94 +972,60 @@ function love.run()
 			outDescr.couldPack = not (rbmfFile.isColored or outDescr.outlineWidth > 0)
 			outDescr.pack      = false--outDescr.couldPack -- LÖVE does not seem to support packing yet as of 11.3.
 
-			-- Figure out how big the output image should be and the position of the glyphs.
-			local out_imageDatas  = {}
-			local out_imageWidth  = 0 -- The dimensions must be the same for all images.
-			local out_imageHeight = 0
+			-- Figure out image size and glyph layout.
+			-- Note: The image dimensions must be the same for for all pages.
+			local out_imageWidth, out_imageHeight, pageCount
 
-			do
-				local function isPositionEarlier(i1,x1,y1, i2,x2,y2)
-					if i1 ~= i2 then  return (i1 < i2)  end
-					if y1 ~= y2 then  return (y1 < y2)  end
-					return (x1 < x2)
+			if outDescr.imageBounds == "smallest" then
+				local w, h, _pageCount = makeGlyphLayout(outDescr, glyphs, out_imageMaxSize, 1/0, true)
+				out_imageWidth         = math.ceil(w / 2) * 2 -- Even numbers are safer than odd, yo.
+				out_imageHeight        = math.ceil(h / 2) * 2
+				pageCount              = _pageCount
+
+			elseif outDescr.imageBounds == "poweroftwo" then
+				local w, h, _pageCount = makeGlyphLayout(outDescr, glyphs, out_imageMaxSize, 1/0, true)
+				out_imageWidth         = 2 ^ math.ceil(math.log(w) / math.log(2))
+				out_imageHeight        = 2 ^ math.ceil(math.log(h) / math.log(2))
+				pageCount              = _pageCount
+
+			elseif outDescr.imageBounds == "poweroftwosquare" then
+				local bestMaxSize   = out_imageMaxSize
+				local bestPageCount = 1/0
+				local maxSize       = bestMaxSize
+
+				while maxSize >= 1 do
+					local w, h, _pageCount = makeGlyphLayout(outDescr, glyphs, maxSize, bestPageCount, false)
+					if not w then  break  end
+
+					bestPageCount = _pageCount
+					bestMaxSize   = maxSize
+
+					maxSize = .5 * maxSize
 				end
 
-				local x0 = outDescr.imagePaddingH
-				local y0 = outDescr.imagePaddingV
+				local w, h, _pageCount = makeGlyphLayout(outDescr, glyphs, bestMaxSize, 1/0, true)
+				out_imageWidth         = 2 ^ math.ceil(math.log(math.max(w, h)) / math.log(2))
+				out_imageHeight        = out_imageWidth
+				pageCount              = _pageCount
 
-				local xs      = {--[[r]]x0, --[[g]]x0, --[[b]]x0, --[[a]]x0}
-				local ys      = {--[[r]]y0, --[[g]]y0, --[[b]]y0, --[[a]]y0}
-				local maxYs   = {--[[r]]y0, --[[g]]y0, --[[b]]y0, --[[a]]y0}
-				local indices = {--[[r]]1,  --[[g]]1,  --[[b]]1,  --[[a]]1 }
+			else
+				error(outDescr.imageBounds)
+			end
 
-				local out_pageCount = 1
-				local hasGlyphs     = {--[[ [pageIndex1]=true, ... ]]} -- Per page.
+			if out_imageWidth > out_imageMaxSize or out_imageHeight > out_imageMaxSize then
+				errorLine(
+					"Image '%s' need a bigger size limit than %dx%d. (The size is %dx%d)",
+					outDescr.pathImage, out_imageMaxSize, out_imageMaxSize, out_imageWidth, out_imageHeight
+				)
+			end
 
-				for _, glyphInfo in ipairs(glyphs) do
-					if glyphInfo.inW > 0 then
-						local wPadded = glyphInfo.inW + 2*outDescr.outlineWidth + outDescr.glyphPaddingL+outDescr.glyphPaddingR
-						local hPadded = glyphInfo.inH + 2*outDescr.outlineWidth + outDescr.glyphPaddingU+outDescr.glyphPaddingD
+			local out_imageDatas = {}
 
-						local channel = 1
+			for imageIndex = 1, pageCount do
+				out_imageDatas[imageIndex] = LI.newImageData(out_imageWidth, out_imageHeight)
+			end
 
-						if outDescr.pack then
-							if isPositionEarlier(indices[2],xs[2],ys[2], indices[channel],xs[channel],ys[channel]) then  channel = 2  end
-							if isPositionEarlier(indices[3],xs[3],ys[3], indices[channel],xs[channel],ys[channel]) then  channel = 3  end
-							if isPositionEarlier(indices[4],xs[4],ys[4], indices[channel],xs[channel],ys[channel]) then  channel = 4  end
-						end
-
-						if xs[channel]+wPadded > out_imageMaxSize-outDescr.imagePaddingH and hasGlyphs[indices[channel]] then
-							xs[channel] = x0
-							ys[channel] = maxYs[channel] + 1 + outDescr.glyphSpacingV
-
-							if ys[channel]+hPadded > out_imageMaxSize-outDescr.imagePaddingV then
-								ys[channel]      = y0
-								maxYs[channel]   = y0
-								indices[channel] = indices[channel] + 1
-							end
-						end
-
-						glyphInfo.outChannel    = channel
-						glyphInfo.outImageIndex = indices[channel]
-
-						glyphInfo.outW = wPadded
-						glyphInfo.outH = hPadded
-						glyphInfo.outX = xs[channel]
-						glyphInfo.outY = ys[channel]
-
-						out_imageWidth  = math.max(out_imageWidth,  xs[channel]+wPadded)
-						out_imageHeight = math.max(out_imageHeight, ys[channel]+hPadded)
-						out_pageCount   = math.max(out_pageCount,   indices[channel])
-
-						xs[channel]    = xs[channel] + wPadded + outDescr.glyphSpacingH
-						maxYs[channel] = math.max(maxYs[channel], ys[channel]+hPadded-1)
-
-						hasGlyphs[indices[channel]] = true
-					end
-				end
-
-				out_imageWidth  = out_imageWidth  + outDescr.imagePaddingH
-				out_imageHeight = out_imageHeight + outDescr.imagePaddingV
-
-				-- Even numbers are safer than odd, yo.
-				out_imageWidth  = math.ceil(out_imageWidth  / 2) * 2
-				out_imageHeight = math.ceil(out_imageHeight / 2) * 2
-
-				assert(out_imageWidth  > 0)
-				assert(out_imageHeight > 0)
-
-				if out_imageWidth > out_imageMaxSize or out_imageHeight > out_imageMaxSize then
-					errorLine(
-						"Image '%s' need a bigger size limit than %dx%d. (The size is %dx%d)",
-						outDescr.pathImage, out_imageMaxSize, out_imageMaxSize, out_imageWidth, out_imageHeight
-					)
-				end
-
-				for imageIndex = 1, out_pageCount do
-					out_imageDatas[imageIndex] = LI.newImageData(out_imageWidth, out_imageHeight)
-				end
-			end--do
-
+			-- Start writing descriptor.
 			local out_descriptorBuffer = {}
 
 			table.insert(out_descriptorBuffer, F(
@@ -1383,7 +1371,7 @@ function love.run()
 					reservePathForWriting(pathObj:toString(), "output(%d) image for '%s'", outIndex, rbmfFile.path)
 
 					mustConnectToDirectory(dir)
-					if not out_imageData:encode("png", filename) then
+					if not out_imageData:encode(outDescr.imageEncoding, filename) then
 						errorLine("Could not write font image '%s'.", pathObj:toString())
 					end
 				end

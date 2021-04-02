@@ -192,6 +192,17 @@ File structure:
     # (Default: false)
     outlineAffectsRenderSpacing=bool
 
+    # Force image bounds to follow a certain rule. Possible values are
+    # 'smallest', 'poweroftwo' or 'poweroftwosquare'. 'smallest' creates the
+    # smallest possible image, 'poweroftwo' forces the width and height to be
+    # power-of-two, and 'poweroftwosquare' forces the width and height to be
+    # both power-of-two and the same length. (Default: smallest)
+	imageBounds=rule
+
+    # Set the image encoding. Possible values are 'png' or 'tga'.
+    # (Default: png)
+	imageEncoding=encoding
+
     # You can embed multiple custom values in the outputted BMFont file using
     # this format.
     custom.someName=someValue
