@@ -301,6 +301,7 @@ function love.run()
 		local section         = ""
 		local sectionLines    = {}
 		local currentOutDescr = nil
+		local paramLines      = {}
 
 		for ln, line in eachLine(rbmfFile.path) do
 			rbmfFile.ln = ln
@@ -323,17 +324,17 @@ function love.run()
 
 			-- Section start.
 			elseif line:find"^%[" then
-				section = line:match"%[(%w+)%]" or fileError(rbmfFile, "Invalid section name line format: %s", line)
+				section = line:match"%[(%w+)%]$" or fileError(rbmfFile, "Invalid section name line format: %s", line)
 
 				if sectionLines[section] and not (section == "out") then
 					fileError(rbmfFile, "Duplicate section '%s'. (Previous is on line %d)", section, sectionLines[section])
 				end
-
 				sectionLines[section] = ln
 
 				if section == "out" then
 					currentOutDescr    = OutputDescriptor()
 					currentOutDescr.ln = ln
+					paramLines         = {}
 					table.insert(rbmfFile.outputDescriptors, currentOutDescr)
 				else
 					currentOutDescr = nil
@@ -349,6 +350,11 @@ function love.run()
 			----------------------------------------------------------------
 
 			elseif section == "in" then
+				if paramLines[k] and not (k == "textFile") then
+					fileError(rbmfFile, "Duplicate parameter '%s'. (Previous is on line %d)", k, paramLines[k])
+				end
+				paramLines[k] = ln
+
 				v = trim(v)
 
 				if k == "colored" then
@@ -379,6 +385,11 @@ function love.run()
 			----------------------------------------------------------------
 
 			elseif section == "edit" then
+				if paramLines[k] then
+					fileError(rbmfFile, "Duplicate parameter '%s'. (Previous is on line %d)", k, paramLines[k])
+				end
+				paramLines[k] = ln
+
 				v = trim(v)
 
 				if k == "alphaThreshold" then
@@ -397,6 +408,11 @@ function love.run()
 			----------------------------------------------------------------
 
 			elseif section == "out" then
+				if paramLines[k] then
+					fileError(rbmfFile, "Duplicate parameter '%s'. (Previous is on line %d)", k, paramLines[k])
+				end
+				paramLines[k] = ln
+
 				v = trim(v)
 
 				if k == "fileImage" then
@@ -482,6 +498,11 @@ function love.run()
 			----------------------------------------------------------------
 
 			elseif section:find"^%d+$" then
+				-- if paramLines[k] and not (k == "glyphs" or k == "icons") then
+				-- 	fileError(rbmfFile, "Duplicate parameter '%s'. (Previous is on line %d)", k, paramLines[k])
+				-- end
+				-- paramLines[k] = ln
+
 				if k == "glyphs" then
 					if v == "" then
 						fileError(rbmfFile, "Missing characters.")
@@ -529,6 +550,11 @@ function love.run()
 			----------------------------------------------------------------
 
 			elseif section == "kerning" then
+				-- if paramLines[k] and not (k == "forward" or k == "bothways") then
+				-- 	fileError(rbmfFile, "Duplicate parameter '%s'. (Previous is on line %d)", k, paramLines[k])
+				-- end
+				-- paramLines[k] = ln
+
 				v = trim(v)
 
 				if k == "forward" then
@@ -576,14 +602,14 @@ function love.run()
 		end
 
 		if rbmfFile.textFilePaths[1] and rbmfFile.fontFilename == "" then
-			fileError(rbmfFile, "%d text file%s was specified, but no TrueType font.", #rbmfFile.textFilePaths, S(#rbmfFile.textFilePaths))
+			fileError(rbmfFile, "%d text files were specified, but no TrueType font.", #rbmfFile.textFilePaths)
 		end
 
 		if rbmfFile.fontFilename ~= "" and rbmfFile.fontSize == 0 then
-			fileError(rbmfFile, "A TrueType font was specified, but no font size.", #rbmfFile.textFilePaths, S(#rbmfFile.textFilePaths))
+			fileError(rbmfFile, "A TrueType font was specified, but no font size.")
 		end
 		if rbmfFile.fontSize > 0 and rbmfFile.fontFilename == "" then
-			fileError(rbmfFile, "A font size was specified, but no TrueType font.", #rbmfFile.textFilePaths, S(#rbmfFile.textFilePaths))
+			fileError(rbmfFile, "A font size was specified, but no TrueType font.")
 		end
 
 		rbmfFile.useTextFiles = (in_textFilesForAll[1] or rbmfFile.textFilePaths[1]) ~= nil
