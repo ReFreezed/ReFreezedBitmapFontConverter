@@ -101,8 +101,12 @@ local function OutputDescriptor()
 		imageBounds   = "smallest", -- "smallest"|"poweroftwo"|"poweroftwosquare"
 		imageEncoding = "png",      -- "png"|"tga"
 
+		alignForMipmapLevels = 1, -- Includes the original unresized image.
+
 		customValues = {--[[ [1]=k1, [k1]=v1, ... ]]},
 		--
+
+		paramLines = {},
 
 		pathImage      = "",
 		pathDescriptor = "",
@@ -334,10 +338,11 @@ function love.run()
 				if section == "out" then
 					currentOutDescr    = OutputDescriptor()
 					currentOutDescr.ln = ln
-					paramLines         = {}
+					paramLines         = currentOutDescr.paramLines
 					table.insert(rbmfFile.outputDescriptors, currentOutDescr)
 				else
-					currentOutDescr = nil
+					currentOutDescr    = nil
+					paramLines         = {}
 				end
 
 				if section:find"^%d+$" then
@@ -482,6 +487,12 @@ function love.run()
 					end
 					currentOutDescr.imageEncoding = v
 
+				elseif k == "alignForMipmapLevels" then
+					currentOutDescr.alignForMipmapLevels = fileAssert(rbmfFile, parseUint(v))
+					if currentOutDescr.alignForMipmapLevels < 1 then
+						fileError(rbmfFile, "There must be at least one level.")
+					end
+
 				elseif k:find"^custom%.[%a_][%w_]*$" then
 					k = k:sub(8)
 
@@ -597,6 +608,7 @@ function love.run()
 		end--for eachLine(rbmfFile.path)
 		rbmfFile.ln = 0
 
+		-- Validate and set final values.
 		if not rbmfFile.outputDescriptors[1] then
 			fileWarning(rbmfFile, "No outputs specified.")
 		end
@@ -636,6 +648,17 @@ function love.run()
 				fileWarning(rbmfFile, "No descriptor file specified for this output.")
 				rbmfFile.ln = 0
 			end
+
+			if outDescr.alignForMipmapLevels > 1 then
+				if outDescr.imagePaddingH+outDescr.imagePaddingH > 0 then
+					rbmfFile.ln = math.max(outDescr.paramLines.alignForMipmapLevels, outDescr.paramLines.imagePadding)
+					fileError(rbmfFile, "Cannot combine alignForMipmapLevels and imagePadding.")
+				end
+				if outDescr.glyphSpacingH+outDescr.glyphSpacingV > 0 then
+					rbmfFile.ln = math.max(outDescr.paramLines.alignForMipmapLevels, outDescr.paramLines.glyphSpacing)
+					fileError(rbmfFile, "Cannot combine alignForMipmapLevels and glyphSpacing.")
+				end
+			end
 		end
 	end--for rbmfFiles
 
@@ -669,7 +692,6 @@ function love.run()
 	--
 	-- Convert font files
 	--
-
 	for _, rbmfFile in ipairs(rbmfFiles) do
 		--
 		-- Load input image
@@ -757,7 +779,7 @@ function love.run()
 				end
 			end
 
-			-- Figure out virtual input image size and glyph coords.
+			-- Determine virtual input image size and glyph coords.
 			local virtual_imageMaxSize = LG.getSystemLimits().texturesize
 			local virtual_imageWidth   = 0
 			local virtual_imageHeight  = 0
@@ -986,32 +1008,51 @@ function love.run()
 		--
 		-- Write output images and descriptors
 		--
-		table.sort(glyphs, function(a, b)
-			if a.inH ~= b.inH then  return a.inH > b.inH  end
-			if a.inW ~= b.inW then  return a.inW > b.inW  end
-			return a.cp < b.cp
-		end)
-
 		for outIndex, outDescr in ipairs(rbmfFile.outputDescriptors) do
 			-- @Feature: Automatic kerning calculations?
 
 			outDescr.couldPack = not (rbmfFile.isColored or outDescr.outlineWidth > 0)
 			outDescr.pack      = false--outDescr.couldPack -- LÖVE does not seem to support packing yet as of 11.3.
 
-			-- Figure out image size and glyph layout.
-			-- Note: The image dimensions must be the same for for all pages.
-			local out_imageWidth, out_imageHeight, pageCount
+			-- Determine glyphs sizes (for this output).
+			do
+				local glyphExtraSizeX = 2*outDescr.outlineWidth + outDescr.glyphPaddingL+outDescr.glyphPaddingR
+				local glyphExtraSizeY = 2*outDescr.outlineWidth + outDescr.glyphPaddingU+outDescr.glyphPaddingD
+
+				local alignment = 2 ^ (outDescr.alignForMipmapLevels-1)
+
+				local ceil = math.ceil
+
+				for _, glyphInfo in ipairs(glyphs) do
+					if glyphInfo.inW > 0 then
+						glyphInfo.outW = ceil((glyphInfo.inW + glyphExtraSizeX) / alignment) * alignment
+						glyphInfo.outH = ceil((glyphInfo.inH + glyphExtraSizeY) / alignment) * alignment
+					end
+				end
+			end
+
+			-- Make it easier to pack glyphs somewhat tightly by sorting them by size.
+			-- Note that we need to do this per output as glyph sizes may change.
+			table.sort(glyphs, function(a, b)
+				if a.outH ~= b.outH then  return a.outH > b.outH  end
+				if a.outW ~= b.outW then  return a.outW > b.outW  end
+				return a.cp < b.cp
+			end)
+
+			-- Determine page size and glyph layout.
+			-- Note: The image dimensions must be the same for for all pages in BMFont.
+			local pageWidth, pageHeight, pageCount
 
 			if outDescr.imageBounds == "smallest" then
 				local w, h, _pageCount = makeGlyphLayout(outDescr, glyphs, out_imageMaxSize, 1/0, true)
-				out_imageWidth         = math.ceil(w / 2) * 2 -- Even numbers are safer than odd, yo.
-				out_imageHeight        = math.ceil(h / 2) * 2
+				pageWidth              = math.ceil(w / 2) * 2 -- Even numbers are safer than odd, yo.
+				pageHeight             = math.ceil(h / 2) * 2
 				pageCount              = _pageCount
 
 			elseif outDescr.imageBounds == "poweroftwo" then
 				local w, h, _pageCount = makeGlyphLayout(outDescr, glyphs, out_imageMaxSize, 1/0, true)
-				out_imageWidth         = 2 ^ math.ceil(math.log(w) / math.log(2))
-				out_imageHeight        = 2 ^ math.ceil(math.log(h) / math.log(2))
+				pageWidth              = 2 ^ math.ceil(math.log(w) / math.log(2))
+				pageHeight             = 2 ^ math.ceil(math.log(h) / math.log(2))
 				pageCount              = _pageCount
 
 			elseif outDescr.imageBounds == "poweroftwosquare" then
@@ -1030,25 +1071,25 @@ function love.run()
 				end
 
 				local w, h, _pageCount = makeGlyphLayout(outDescr, glyphs, bestMaxSize, 1/0, true)
-				out_imageWidth         = 2 ^ math.ceil(math.log(math.max(w, h)) / math.log(2))
-				out_imageHeight        = out_imageWidth
+				pageWidth              = 2 ^ math.ceil(math.log(math.max(w, h)) / math.log(2))
+				pageHeight             = pageWidth
 				pageCount              = _pageCount
 
 			else
 				error(outDescr.imageBounds)
 			end
 
-			if out_imageWidth > out_imageMaxSize or out_imageHeight > out_imageMaxSize then
+			if pageWidth > out_imageMaxSize or pageHeight > out_imageMaxSize then
 				errorLine(
-					"Image '%s' need a bigger size limit than %dx%d. (The size is %dx%d)",
-					outDescr.pathImage, out_imageMaxSize, out_imageMaxSize, out_imageWidth, out_imageHeight
+					"Image '%s' need a bigger size limit than %dx%d. (The calculated minimum size became %.0fx%.0f)",
+					outDescr.pathImage, out_imageMaxSize, out_imageMaxSize, pageWidth, pageHeight
 				)
 			end
 
 			local out_imageDatas = {}
 
 			for imageIndex = 1, pageCount do
-				out_imageDatas[imageIndex] = LI.newImageData(out_imageWidth, out_imageHeight)
+				out_imageDatas[imageIndex] = LI.newImageData(pageWidth, pageHeight)
 			end
 
 			-- Start writing descriptor.
@@ -1075,7 +1116,7 @@ function love.run()
 				'common lineHeight=%d base=%d scaleW=%d scaleH=%d pages=%d packed=%d alphaChnl=0 redChnl=0 greenChnl=0 blueChnl=0\n',
 				in_lineHeight, -- lineHeight
 				in_lineHeight, -- base  @Incomplete: Some way of specifying this. (Probably low priority.)
-				out_imageWidth, out_imageHeight, -- scaleW, scaleH
+				pageWidth, pageHeight, -- scaleW, scaleH
 				#out_imageDatas, -- pages
 				(outDescr.pack and 1 or 0) -- packed
 			))
@@ -1190,8 +1231,8 @@ function love.run()
 			if outDescr.outlineWidth > 0 then
 				assert(not outDescr.pack)
 
-				local w = out_imageWidth
-				local h = out_imageHeight
+				local w = pageWidth
+				local h = pageHeight
 
 				local readonlyImageData = LI.newImageData(w, h)
 				!GET_IMAGE_DATA_POINTER `readonlyImageData`
@@ -1303,8 +1344,8 @@ function love.run()
 			-- @Incomplete: Maybe there should be a setting to skip this step if it's not of importance.
 			--
 			if not outDescr.couldPack and outDescr.outlineWidth == 0 then
-				local w = out_imageWidth
-				local h = out_imageHeight
+				local w = pageWidth
+				local h = pageHeight
 
 				local min = math.min
 				local max = math.max

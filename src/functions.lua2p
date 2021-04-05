@@ -561,11 +561,20 @@ do
 		return (x1 < x2)
 	end
 
-	-- imageWidth, imageHeight, pageCount = makeGlyphLayout( outDescr, glyphs, imageMaxSize, maxPages, forReal )
+	-- pageWidth, pageHeight, pageCount = makeGlyphLayout( outDescr, glyphs, imageMaxSize, maxPages, forReal )
 	-- Returns nil if pageCount exceeds maxPages.
 	function _G.makeGlyphLayout(outDescr, glyphs, imageMaxSize, maxPages, forReal)
-		local imageWidth  = 0
-		local imageHeight = 0
+		local pack = outDescr.pack
+
+		local maxW = imageMaxSize - outDescr.imagePaddingH
+		local maxH = imageMaxSize - outDescr.imagePaddingV
+
+		local glyphSpacingH = outDescr.glyphSpacingH
+		local glyphSpacingV = outDescr.glyphSpacingV
+
+		local pageWidth  = 2 -- @Hardcoded minimum page size.
+		local pageHeight = 2
+		local pageCount  = 1
 
 		local x0 = outDescr.imagePaddingH
 		local y0 = outDescr.imagePaddingV
@@ -575,27 +584,31 @@ do
 		local maxYs   = {--[[r]]y0, --[[g]]y0, --[[b]]y0, --[[a]]y0}
 		local indices = {--[[r]]1,  --[[g]]1,  --[[b]]1,  --[[a]]1 }
 
-		local pageCount = 1
 		local hasGlyphs = {--[[ [pageIndex1]=hasGlyphs, ... ]]}
+
+		local ceil = math.ceil
+		local max  = math.max
 
 		for _, glyphInfo in ipairs(glyphs) do
 			if glyphInfo.inW > 0 then
-				local wPadded = glyphInfo.inW + 2*outDescr.outlineWidth + outDescr.glyphPaddingL+outDescr.glyphPaddingR
-				local hPadded = glyphInfo.inH + 2*outDescr.outlineWidth + outDescr.glyphPaddingU+outDescr.glyphPaddingD
+				-- Note: Glyphs will automatically be mipmap-aligned because of their already-determined final size
+				-- and our layout algorithm plus our rule that you cannot mix most spacings and mipmaps.
+				local wPadded = glyphInfo.outW
+				local hPadded = glyphInfo.outH
 
 				local channel = 1
 
-				if outDescr.pack then
+				if pack then
 					if isPositionEarlier(indices[2],xs[2],ys[2], indices[channel],xs[channel],ys[channel]) then  channel = 2  end
 					if isPositionEarlier(indices[3],xs[3],ys[3], indices[channel],xs[channel],ys[channel]) then  channel = 3  end
 					if isPositionEarlier(indices[4],xs[4],ys[4], indices[channel],xs[channel],ys[channel]) then  channel = 4  end
 				end
 
-				if xs[channel]+wPadded > imageMaxSize-outDescr.imagePaddingH and hasGlyphs[indices[channel]] then
+				if xs[channel]+wPadded > maxW and hasGlyphs[indices[channel]] then
 					xs[channel] = x0
-					ys[channel] = maxYs[channel] + 1 + outDescr.glyphSpacingV
+					ys[channel] = maxYs[channel] + 1 + glyphSpacingV
 
-					if ys[channel]+hPadded > imageMaxSize-outDescr.imagePaddingV then
+					if ys[channel]+hPadded > maxH then
 						ys[channel]      = y0
 						maxYs[channel]   = y0
 						indices[channel] = indices[channel] + 1
@@ -603,21 +616,18 @@ do
 				end
 
 				if forReal then
-					glyphInfo.outChannel    = channel
 					glyphInfo.outImageIndex = indices[channel]
-
-					glyphInfo.outW = wPadded
-					glyphInfo.outH = hPadded
-					glyphInfo.outX = xs[channel]
-					glyphInfo.outY = ys[channel]
+					glyphInfo.outChannel    = channel
+					glyphInfo.outX          = xs[channel]
+					glyphInfo.outY          = ys[channel]
 				end
 
-				imageWidth  = math.max(imageWidth,  xs[channel]+wPadded)
-				imageHeight = math.max(imageHeight, ys[channel]+hPadded)
-				pageCount   = math.max(pageCount,   indices[channel])
+				pageWidth  = max(pageWidth,  xs[channel]+wPadded)
+				pageHeight = max(pageHeight, ys[channel]+hPadded)
+				pageCount  = max(pageCount,  indices[channel])
 
-				xs[channel]    = xs[channel] + wPadded + outDescr.glyphSpacingH
-				maxYs[channel] = math.max(maxYs[channel], ys[channel]+hPadded-1)
+				xs[channel]    = xs[channel] + wPadded + glyphSpacingH
+				maxYs[channel] = max(maxYs[channel], ys[channel]+hPadded-1)
 
 				hasGlyphs[indices[channel]] = true
 
@@ -625,15 +635,12 @@ do
 					return nil
 				end
 			end
-		end
+		end--for glyphs
 
-		imageWidth  = imageWidth  + outDescr.imagePaddingH
-		imageHeight = imageHeight + outDescr.imagePaddingV
+		pageWidth  = pageWidth  + outDescr.imagePaddingH
+		pageHeight = pageHeight + outDescr.imagePaddingV
 
-		assert(imageWidth  > 0)
-		assert(imageHeight > 0)
-
-		return imageWidth, imageHeight, pageCount
+		return pageWidth, pageHeight, pageCount
 	end
 end
 

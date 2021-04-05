@@ -203,6 +203,15 @@ File structure:
     # (Default: png)
 	imageEncoding=encoding
 
+	# If the font will be subject to mipmapping at a later point, this
+	# specifies how many mipmap levels are expected/relevant. Setting this to
+	# a value above 1 will align glyphs in such a way so that bleeding will be
+	# minimized when the image is downscaled 50% at a time until a certain
+	# point. Note: Cannot be combined with glyphSpacing or imagePadding (but
+	# glyphPadding works fine). (Default: 1, i.e. no additional levels for
+	# mipmapping is assumed)
+	alignForMipmapLevels=levels
+
     # You can embed multiple custom values in the outputted BMFont file using
     # this format.
     custom.someName=someValue
