@@ -207,9 +207,18 @@ File structure:
 	# specifies how many mipmap levels are expected/relevant. Setting this to
 	# a value above 1 will align glyphs in such a way so that bleeding will be
 	# minimized when the image is downscaled 50% at a time until a certain
-	# point. Note: Cannot be combined with glyphSpacing or imagePadding (but
-	# glyphPadding works fine). (Default: 1, i.e. no additional levels for
-	# mipmapping is assumed)
+	# point. (Default: 1, i.e. no additional levels for mipmapping are
+	# assumed)
+	#
+	# Note: Cannot be combined with glyphSpacing or imagePadding (but
+	# glyphPadding works fine).
+	#
+	# Note: glyphPadding is multiplied by this so that the most downscaled
+	# image will have the visible padding of the unmultiplied glyphPadding.
+	#
+	# Note: This parameter should not be needed if the program creating the
+	# mipmaps is smart enough.
+	#
 	alignForMipmapLevels=levels
 
     # You can embed multiple custom values in the outputted BMFont file using

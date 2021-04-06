@@ -113,6 +113,8 @@ local function OutputDescriptor()
 
 		couldPack = false,
 		pack      = false,
+
+		mipmapAlignment = 1, -- 2 ^ (alignForMipmapLevels - 1)
 	}
 end
 
@@ -120,26 +122,26 @@ local function GlyphInfo(cp)
 	return {
 		cp = cp,
 
-		inX1 = 0,
+		inX1 = 0, -- These may get trimmed.
 		inY1 = 0,
 		inX2 = 0,
 		inY2 = 0,
 
-		inW = 0, -- inX2-inX1+1
-		inH = 0, -- inY2-inY1+1
+		inW = 0, -- inX2 - inX1 + 1
+		inH = 0, -- inY2 - inY1 + 1
 
 		inW0 = 0, -- Untrimmed width.
 
 		inOffsetX = 0, -- How much was trimmed on the left.
 		inOffsetY = 0, -- How much was trimmed on the top.
 
-		outImageIndex = 1,
-		outChannel    = 1,
-
 		outW = 0,
 		outH = 0,
-		outX = 0,
-		outY = 0,
+
+		outImageIndex = 1,
+		outChannel    = 1, -- Ignored if not packing.
+		outX          = 0,
+		outY          = 0,
 	}
 end
 
@@ -658,6 +660,8 @@ function love.run()
 					rbmfFile.ln = math.max(outDescr.paramLines.alignForMipmapLevels, outDescr.paramLines.glyphSpacing)
 					fileError(rbmfFile, "Cannot combine alignForMipmapLevels and glyphSpacing.")
 				end
+
+				outDescr.mipmapAlignment = 2 ^ (outDescr.alignForMipmapLevels-1)
 			end
 		end
 	end--for rbmfFiles
@@ -1016,10 +1020,10 @@ function love.run()
 
 			-- Determine glyphs sizes (for this output).
 			do
-				local glyphExtraSizeX = 2*outDescr.outlineWidth + outDescr.glyphPaddingL+outDescr.glyphPaddingR
-				local glyphExtraSizeY = 2*outDescr.outlineWidth + outDescr.glyphPaddingU+outDescr.glyphPaddingD
+				local glyphExtraSizeX = 2*outDescr.outlineWidth + (outDescr.glyphPaddingL+outDescr.glyphPaddingR) * outDescr.mipmapAlignment
+				local glyphExtraSizeY = 2*outDescr.outlineWidth + (outDescr.glyphPaddingU+outDescr.glyphPaddingD) * outDescr.mipmapAlignment
 
-				local alignment = 2 ^ (outDescr.alignForMipmapLevels-1)
+				local alignment = outDescr.mipmapAlignment
 
 				local ceil = math.ceil
 
@@ -1101,7 +1105,7 @@ function love.run()
 				-- @Polish: We can do more here, but it's all probably useless!
 				'info face="" size=%d bold=0 italic=0 charset="" unicode=1 stretchH=100 smooth=0 aa=0 padding=%d,%d,%d,%d spacing=%d,%d outline=%d',
 				in_lineHeight, -- size
-				outDescr.glyphPaddingU, outDescr.glyphPaddingR, outDescr.glyphPaddingD, outDescr.glyphPaddingL, -- padding
+				outDescr.glyphPaddingU*outDescr.mipmapAlignment, outDescr.glyphPaddingR*outDescr.mipmapAlignment, outDescr.glyphPaddingD*outDescr.mipmapAlignment, outDescr.glyphPaddingL*outDescr.mipmapAlignment, -- padding
 				outDescr.glyphSpacingH, outDescr.glyphSpacingV, -- spacing
 				outDescr.outlineWidth -- outline
 			))
@@ -1138,8 +1142,8 @@ function love.run()
 
 					for _, glyphInfo in ipairs(glyphs) do
 						if glyphInfo.outImageIndex == imageIndex and glyphInfo.outW > 0 then
-							local outX1 = glyphInfo.outX + outDescr.glyphPaddingL -- Note: Packed glyphs have no outlines.
-							local outY1 = glyphInfo.outY + outDescr.glyphPaddingU
+							local outX1 = glyphInfo.outX + outDescr.glyphPaddingL * outDescr.mipmapAlignment -- Note: Packed glyphs have no outlines.
+							local outY1 = glyphInfo.outY + outDescr.glyphPaddingU * outDescr.mipmapAlignment
 							local outX2 = outX1 + glyphInfo.inW - 1
 							local outY2 = outY1 + glyphInfo.inH - 1
 
@@ -1184,8 +1188,8 @@ function love.run()
 					if glyphInfo.outW > 0 then
 						out_imageDatas[glyphInfo.outImageIndex]:paste(
 							in_imageData,
-							glyphInfo.outX + outDescr.glyphPaddingL + outDescr.outlineWidth, -- dx
-							glyphInfo.outY + outDescr.glyphPaddingU + outDescr.outlineWidth, -- dy
+							glyphInfo.outX + outDescr.glyphPaddingL * outDescr.mipmapAlignment + outDescr.outlineWidth, -- dx
+							glyphInfo.outY + outDescr.glyphPaddingU * outDescr.mipmapAlignment + outDescr.outlineWidth, -- dy
 							glyphInfo.inX1, -- sx
 							glyphInfo.inY1, -- sy
 							glyphInfo.inW,  -- sw
@@ -1212,7 +1216,7 @@ function love.run()
 				local xAdvance = (
 					glyphInfo.inW0
 					+ outDescr.renderSpacing
-					+ (outDescr.paddingAffectsRenderSpacing and outDescr.glyphPaddingL+outDescr.glyphPaddingR or 0)
+					+ (outDescr.paddingAffectsRenderSpacing and outDescr.glyphPaddingL*outDescr.mipmapAlignment+outDescr.glyphPaddingR or 0)
 					+ (outDescr.outlineAffectsRenderSpacing and outDescr.outlineWidth or 0)
 				)
 				table.insert(out_descriptorBuffer, F(
@@ -1341,6 +1345,11 @@ function love.run()
 			-- rendering in-game. (Try, because LÖVE currently doesn't do the
 			-- right thing... Maybe someday it will! 2021-03-29)
 			--
+			-- If alignForMipmapLevels is 1 we only change pixels directly
+			-- around non-transparent pixels - otherwise we change all pixels.
+			-- Note that the algorithm currently doesn't consider glyph
+			-- bounds, which it probably should!
+			--
 			-- @Incomplete: Maybe there should be a setting to skip this step if it's not of importance.
 			--
 			if not outDescr.couldPack and outDescr.outlineWidth == 0 then
@@ -1353,54 +1362,128 @@ function love.run()
 				for _, out_imageData in ipairs(out_imageDatas) do
 					!GET_IMAGE_DATA_POINTER `out_imageData`
 
-					!MAP_PIXEL(`out_imageData`, `x`,`y`)
-						!GET_PIXEL(`out_imageData`, nil,nil,nil,`a`, `x`,`y`)
+					if outDescr.alignForMipmapLevels > 1 then
+						local maxRadius = math.max(w, h) -- @Speed: Maybe we can use some lower value here?
 
-						if a == 0 then
-							!(
+						!MAP_PIXEL(`out_imageData`, `x`,`y`)
 							-- Note: We don't need to use a readonlyImageData as we only write to transparent
 							-- pixels and we only read/use values from non-transparent pixels.
-							GET_PIXEL(`out_imageData`, nil,nil,nil,`a1`, `    x        `,`max(y-1, 0  )`)
-							GET_PIXEL(`out_imageData`, nil,nil,nil,`a2`, `min(x+1, w-1)`,`max(y-1, 0  )`)
-							GET_PIXEL(`out_imageData`, nil,nil,nil,`a3`, `min(x+1, w-1)`,`    y        `)
-							GET_PIXEL(`out_imageData`, nil,nil,nil,`a4`, `min(x+1, w-1)`,`min(y+1, h-1)`)
-							GET_PIXEL(`out_imageData`, nil,nil,nil,`a5`, `    x        `,`min(y+1, h-1)`)
-							GET_PIXEL(`out_imageData`, nil,nil,nil,`a6`, `max(x-1, 0  )`,`min(y+1, h-1)`)
-							GET_PIXEL(`out_imageData`, nil,nil,nil,`a7`, `max(x-1, 0  )`,`    y        `)
-							GET_PIXEL(`out_imageData`, nil,nil,nil,`a8`, `max(x-1, 0  )`,`max(y-1, 0  )`)
-							)
+							!GET_PIXEL(`out_imageData`, nil,nil,nil,`a`, `x`,`y`)
 
-							local weightInverted = 1 / (a1 + a2 + a3 + a4 + a5 + a6 + a7 + a8)
+							if a == 0 then
+								local weight = 0
 
-							if weightInverted < 1/0 then
-								!(
-								-- Note: We don't need to use a readonlyImageData as we only write to transparent
-								-- pixels and we only read/use values from non-transparent pixels.
-								GET_PIXEL(`out_imageData`, `r1`,`g1`,`b1`,nil, `    x        `,`max(y-1, 0  )`)
-								GET_PIXEL(`out_imageData`, `r2`,`g2`,`b2`,nil, `min(x+1, w-1)`,`max(y-1, 0  )`)
-								GET_PIXEL(`out_imageData`, `r3`,`g3`,`b3`,nil, `min(x+1, w-1)`,`    y        `)
-								GET_PIXEL(`out_imageData`, `r4`,`g4`,`b4`,nil, `min(x+1, w-1)`,`min(y+1, h-1)`)
-								GET_PIXEL(`out_imageData`, `r5`,`g5`,`b5`,nil, `    x        `,`min(y+1, h-1)`)
-								GET_PIXEL(`out_imageData`, `r6`,`g6`,`b6`,nil, `max(x-1, 0  )`,`min(y+1, h-1)`)
-								GET_PIXEL(`out_imageData`, `r7`,`g7`,`b7`,nil, `max(x-1, 0  )`,`    y        `)
-								GET_PIXEL(`out_imageData`, `r8`,`g8`,`b8`,nil, `max(x-1, 0  )`,`max(y-1, 0  )`)
-								)
+								for radius = 1, maxRadius do
+									local x1 = max(x-radius, 0)
+									local y1 = max(y-radius, 0)
+									local x2 = min(x+radius, w-1)
+									local y2 = min(y+radius, h-1)
 
-								local r = (r1*a1 + r2*a2 + r3*a3 + r4*a4 + r5*a5 + r6*a6 + r7*a7 + r8*a8) * weightInverted
-								local g = (g1*a1 + g2*a2 + g3*a3 + g4*a4 + g5*a5 + g6*a6 + g7*a7 + g8*a8) * weightInverted
-								local b = (b1*a1 + b2*a2 + b3*a3 + b4*a4 + b5*a5 + b6*a6 + b7*a7 + b8*a8) * weightInverted
+									local dist = 0
 
-								!SET_PIXEL(`out_imageData`, `x`,`y`, `r`,`g`,`b`,`a`)
+									for _dist = 0, radius do
+										!GET_PIXEL(`out_imageData`, nil,nil,nil,`a1`, `max(x-_dist, x1)`,`y1`)
+										!GET_PIXEL(`out_imageData`, nil,nil,nil,`a2`, `min(x+_dist, x2)`,`y1`)
+										!GET_PIXEL(`out_imageData`, nil,nil,nil,`a3`, `x1`,`max(y-_dist, y1)`)
+										!GET_PIXEL(`out_imageData`, nil,nil,nil,`a4`, `x2`,`max(y-_dist, y1)`)
+										!GET_PIXEL(`out_imageData`, nil,nil,nil,`a5`, `x1`,`min(y+_dist, y2)`)
+										!GET_PIXEL(`out_imageData`, nil,nil,nil,`a6`, `x2`,`min(y+_dist, y2)`)
+										!GET_PIXEL(`out_imageData`, nil,nil,nil,`a7`, `max(x-_dist, x1)`,`y2`)
+										!GET_PIXEL(`out_imageData`, nil,nil,nil,`a8`, `min(x+_dist, x2)`,`y2`)
 
-							else
-								!SET_PIXEL(`out_imageData`, `x`,`y`, 0,0,0,`a`) -- Stomp unimportant pixels for hopefully better PNG compression.
+										weight = weight + a1 + a2 + a3 + a4 + a5 + a6 + a7 + a8
+
+										if weight > 0 then
+											dist = _dist
+											break
+										end
+									end
+
+									if weight > 0 then
+										!GET_PIXEL(`out_imageData`, `r1`,`g1`,`b1`,`a1`, `max(x-dist, x1)`,`y1`)
+										!GET_PIXEL(`out_imageData`, `r2`,`g2`,`b2`,`a2`, `min(x+dist, x2)`,`y1`)
+										!GET_PIXEL(`out_imageData`, `r3`,`g3`,`b3`,`a3`, `x1`,`max(y-dist, y1)`)
+										!GET_PIXEL(`out_imageData`, `r4`,`g4`,`b4`,`a4`, `x2`,`max(y-dist, y1)`)
+										!GET_PIXEL(`out_imageData`, `r5`,`g5`,`b5`,`a5`, `x1`,`min(y+dist, y2)`)
+										!GET_PIXEL(`out_imageData`, `r6`,`g6`,`b6`,`a6`, `x2`,`min(y+dist, y2)`)
+										!GET_PIXEL(`out_imageData`, `r7`,`g7`,`b7`,`a7`, `max(x-dist, x1)`,`y2`)
+										!GET_PIXEL(`out_imageData`, `r8`,`g8`,`b8`,`a8`, `min(x+dist, x2)`,`y2`)
+
+										local r = (r1*a1 + r2*a2 + r3*a3 + r4*a4 + r5*a5 + r6*a6 + r7*a7 + r8*a8) / weight
+										local g = (g1*a1 + g2*a2 + g3*a3 + g4*a4 + g5*a5 + g6*a6 + g7*a7 + g8*a8) / weight
+										local b = (b1*a1 + b2*a2 + b3*a3 + b4*a4 + b5*a5 + b6*a6 + b7*a7 + b8*a8) / weight
+
+										!SET_PIXEL(`out_imageData`, `x`,`y`, `r`,`g`,`b`,nil)
+										break
+									end
+								end--for radius
+
+								if weight == 0 then
+									break -- We only get here if all pixels are transparent.
+								end
 							end
-						end
-					!MAP_PIXEL_END()
+						!MAP_PIXEL_END()
+
+					else--if outDescr.alignForMipmapLevels == 1 then
+						!MAP_PIXEL(`out_imageData`, `x`,`y`)
+							-- Note: We don't need to use a readonlyImageData as we only write to transparent
+							-- pixels and we only read/use values from non-transparent pixels.
+							!GET_PIXEL(`out_imageData`, nil,nil,nil,`a`, `x`,`y`)
+
+							if a == 0 then
+								!GET_PIXEL(`out_imageData`, nil,nil,nil,`a1`, `    x        `,`max(y-1, 0  )`)
+								!GET_PIXEL(`out_imageData`, nil,nil,nil,`a2`, `max(x-1, 0  )`,`    y        `)
+								!GET_PIXEL(`out_imageData`, nil,nil,nil,`a3`, `min(x+1, w-1)`,`    y        `)
+								!GET_PIXEL(`out_imageData`, nil,nil,nil,`a4`, `    x        `,`min(y+1, h-1)`)
+
+								local weight = a1 + a2 + a3 + a4
+
+								if weight > 0 then
+									!GET_PIXEL(`out_imageData`, `r1`,`g1`,`b1`,nil, `    x        `,`max(y-1, 0  )`)
+									!GET_PIXEL(`out_imageData`, `r2`,`g2`,`b2`,nil, `max(x-1, 0  )`,`    y        `)
+									!GET_PIXEL(`out_imageData`, `r3`,`g3`,`b3`,nil, `min(x+1, w-1)`,`    y        `)
+									!GET_PIXEL(`out_imageData`, `r4`,`g4`,`b4`,nil, `    x        `,`min(y+1, h-1)`)
+
+									local r = (r1*a1 + r2*a2 + r3*a3 + r4*a4) / weight
+									local g = (g1*a1 + g2*a2 + g3*a3 + g4*a4) / weight
+									local b = (b1*a1 + b2*a2 + b3*a3 + b4*a4) / weight
+
+									!SET_PIXEL(`out_imageData`, `x`,`y`, `r`,`g`,`b`,nil)
+
+								else
+									!GET_PIXEL(`out_imageData`, nil,nil,nil,`a1`, `max(x-1, 0  )`,`max(y-1, 0  )`)
+									!GET_PIXEL(`out_imageData`, nil,nil,nil,`a2`, `min(x+1, w-1)`,`max(y-1, 0  )`)
+									!GET_PIXEL(`out_imageData`, nil,nil,nil,`a3`, `max(x-1, 0  )`,`min(y+1, h-1)`)
+									!GET_PIXEL(`out_imageData`, nil,nil,nil,`a4`, `min(x+1, w-1)`,`min(y+1, h-1)`)
+
+									weight = a1 + a2 + a3 + a4
+
+									if weight > 0 then
+										!GET_PIXEL(`out_imageData`, `r1`,`g1`,`b1`,nil, `max(x-1, 0  )`,`max(y-1, 0  )`)
+										!GET_PIXEL(`out_imageData`, `r2`,`g2`,`b2`,nil, `min(x+1, w-1)`,`max(y-1, 0  )`)
+										!GET_PIXEL(`out_imageData`, `r3`,`g3`,`b3`,nil, `max(x-1, 0  )`,`min(y+1, h-1)`)
+										!GET_PIXEL(`out_imageData`, `r4`,`g4`,`b4`,nil, `min(x+1, w-1)`,`min(y+1, h-1)`)
+
+										local r = (r1*a1 + r2*a2 + r3*a3 + r4*a4) / weight
+										local g = (g1*a1 + g2*a2 + g3*a3 + g4*a4) / weight
+										local b = (b1*a1 + b2*a2 + b3*a3 + b4*a4) / weight
+
+										!SET_PIXEL(`out_imageData`, `x`,`y`, `r`,`g`,`b`,nil)
+
+									else
+										-- Stomp unimportant pixels for better compression.
+										-- We assume white is the dominant color in the image.
+										!SET_PIXEL(`out_imageData`, `x`,`y`, 1,1,1,nil)
+									end
+								end
+							end
+						!MAP_PIXEL_END()
+					end
 				end--for out_imageDatas
 			end
 
 			-- for _, data in ipairs(out_imageDatas) do  data:mapPixel(function(x,y, r,g,b,a)  return r, g, b, 1  end)  end -- DEBUG: Show as fully opaque.
+			-- for _, data in ipairs(out_imageDatas) do  data:mapPixel(function(x,y, r,g,b,a)  if a > 0 then  return r, g, b, 1  else  return (r+g+b)/3, 0, 0, 1  end  end)  end -- DEBUG: Show as fully opaque with red indicating transparency.
 
 			-- Write kernings.
 			local kerningPairs = {}
