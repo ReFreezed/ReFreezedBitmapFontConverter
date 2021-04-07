@@ -21,10 +21,11 @@
 	getImageContentBounds
 	getLast
 	getUnicodeBlockName
+	isColor
 	makeGlyphLayout
 	normalizePath
 	outputImageFilenameBaseToFilename
-	parseBool, parseNumber, parseInt*, parseUint*, parseUint*Sides
+	parseBool, parseNumber, parseInt*, parseUint*, parseUint*Sides, parseColor
 	print, printf
 	processPathTemplate
 	reservePathForReading, reservePathForWriting
@@ -404,8 +405,8 @@ function _G.parseUint4(s)
 	return true, tonumber(nStr1), tonumber(nStr2), tonumber(nStr3), tonumber(nStr4)
 end
 
--- vertical, horizontal = parseUint2Sides "vertical horizontal"
--- vertical, horizontal = parseUint2Sides "verticalHorizontal"
+-- success, vertical, horizontal = parseUint2Sides "vertical horizontal"
+-- success, vertical, horizontal = parseUint2Sides "verticalHorizontal"
 function _G.parseUint2Sides(s)
 	local nStrV, nStrH = s:match"^(%d+) +(%d+)$"
 	if not nStrV then
@@ -416,10 +417,10 @@ function _G.parseUint2Sides(s)
 	end
 	return true, tonumber(nStrV), tonumber(nStrH or nStrV)
 end
--- up, right, down, left = parseUint4Sides "up right down left"
--- up, right, down, left = parseUint4Sides "up rightLeft down"
--- up, right, down, left = parseUint4Sides "upDown leftRight"
--- up, right, down, left = parseUint4Sides "upRightDownLeft"
+-- success, up, right, down, left = parseUint4Sides "up right down left"
+-- success, up, right, down, left = parseUint4Sides "up rightLeft down"
+-- success, up, right, down, left = parseUint4Sides "upDown leftRight"
+-- success, up, right, down, left = parseUint4Sides "upRightDownLeft"
 function _G.parseUint4Sides(s)
 	local nStrU, nStrR, nStrB, nStrL = s:match"^(%d+) +(%d+) +(%d+) +(%d+)$"
 	if not nStrU then
@@ -435,6 +436,39 @@ function _G.parseUint4Sides(s)
 		end
 	end
 	return true, tonumber(nStrU), tonumber(nStrR or nStrU), tonumber(nStrB or nStrU), tonumber(nStrL or nStrR or nStrU)
+end
+
+-- success, r, g, b, a = parseColor "red green blue alpha"
+-- success, r, g, b, a = parseColor "red green blue" -- Alpha is 1.
+-- success, r, g, b, a = parseColor "grey alpha"
+-- success, r, g, b, a = parseColor "grey" -- Alpha is 1.
+function _G.parseColor(s)
+	local r, g, b, a = s:match"^(%d*%.?%d+) +(%d*%.?%d+) +(%d*%.?%d+) +(%d*%.?%d+)$"
+	if not r then
+		r, g, b = s:match"^(%d*%.?%d+) +(%d*%.?%d+) +(%d*%.?%d+)$"
+		if not r then
+			r, a = s:match"^(%d*%.?%d+) +(%d*%.?%d+)$"
+			if not r then
+				r = s:match"^(%d*%.?%d+)$"
+			end
+		end
+	end
+
+	r = tonumber(r)
+	g = tonumber(g or r)
+	b = tonumber(b or r)
+	a = tonumber(a or 1)
+
+	if not (r and g and b and a) then
+		return false, F("Expected 4, 3, 2 or 1 unsigned numbers - got '%s'.", s)
+	end
+
+	r = math.min(math.max(r, 0), 1)
+	g = math.min(math.max(g, 0), 1)
+	b = math.min(math.max(b, 0), 1)
+	a = math.min(math.max(a, 0), 1)
+
+	return true, r, g, b, a
 end
 
 
@@ -642,6 +676,15 @@ do
 
 		return pageWidth, pageHeight, pageCount
 	end
+end
+
+
+
+function _G.isColor(color, r,g,b,a)
+	return math.floor(color[1]*255+.5) == math.floor(r*255+.5)
+	   and math.floor(color[2]*255+.5) == math.floor(g*255+.5)
+	   and math.floor(color[3]*255+.5) == math.floor(b*255+.5)
+	   and math.floor(color[4]*255+.5) == math.floor(a*255+.5)
 end
 
 

@@ -138,17 +138,28 @@ File structure:
     # replaced by the descriptor's filename). Required parameter!
     fileImage=filename
 
-    # Filename of the outputted BMFont descriptor, e.g. "<name>.fnt"
-    # (<name> will be replaced by the .rbmf descriptor's filename). Required
+    # Filename of the outputted BMFont descriptor, e.g. "<name>.fnt" (<name>
+    # will be replaced by the .rbmf descriptor's filename). Required
     # parameter!
     fileDescriptor=filename
+
+    # Color of the glyphs (multiplied with the input pixels). The values
+    # should be numbers between 0 and 1. The parameter has multiple formats.
+    # Alpha is 1 if omitted. (Default: 1 1 1 1)
+    glyphColor=grey
+    glyphColor=grey alpha
+    glyphColor=red green blue
+    glyphColor=red green blue alpha
 
     # Width of the outline, if an outline should be added by the program.
     # (Default: 0, no outline is added)
     outlineWidth=1
 
     # Color of the outline, if one is added. The values should be numbers
-    # between 0 and 1. (Default: 0 0 0 1)
+    # between 0 and 1. Alpha is 1 if omitted. (Default: 0 0 0 1)
+    outlineColor=grey
+    outlineColor=grey alpha
+    outlineColor=red green blue
     outlineColor=red green blue alpha
 
     # Method used for creating the outline, if one is added. Possible values
@@ -164,18 +175,20 @@ File structure:
     # rendered - that's what renderSpacing and kerning is for. Setting this to
     # a positive number may remove black fringe around glyphs when text is
     # rendered rotated/scaled or at non-integer coordinates if linear
-    # interpolation is used. The value have multiple formats.
+    # interpolation is used. The parameter has multiple formats.
+    # (Default: 0 0 0 0)
     glyphPadding=padding
     glyphPadding=vertival horizontal
     glyphPadding=up horizontal down
     glyphPadding=up right down left
 
-    # Extra space between glyphs. The value have multiple formats.
+    # Extra space between glyphs. The parameter has multiple formats.
+    # (Default: 0 0)
     glyphSpacing=spacing
     glyphSpacing=vertival horizontal
 
-    # Extra space between the glyphs and the image border. The value have
-    # multiple formats.
+    # Extra space between the glyphs and the image border. The parameter has
+    # multiple formats. (Default: 0 0)
     imagePadding=padding
     imagePadding=vertival horizontal
 

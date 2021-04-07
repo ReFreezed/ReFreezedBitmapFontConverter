@@ -20,7 +20,7 @@ imagePadding=1
 fileImage=<name>_outline.png
 fileDescriptor=<name>_outline.fnt
 outlineWidth=1
-outlineColor=.9 .7 0 1
+outlineColor=.9 .7 0
 glyphSpacing=1
 imagePadding=1
 

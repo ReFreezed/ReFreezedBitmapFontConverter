@@ -78,6 +78,8 @@ local function OutputDescriptor()
 		filenameImage      = "",
 		filenameDescriptor = "",
 
+		glyphColor = {1,1,1,1},
+
 		glyphPaddingU = 0,
 		glyphPaddingR = 0,
 		glyphPaddingD = 0,
@@ -429,6 +431,10 @@ function love.run()
 					local path                         = normalizePath(v ~= "" and v or fileError(rbmfFile, "Path cannot be empty."))
 					currentOutDescr.filenameDescriptor = processPathTemplate(rbmfFile, path)
 
+				elseif k == "glyphColor" then
+					local c                = currentOutDescr.glyphColor
+					c[1], c[2], c[3], c[4] = fileAssert(rbmfFile, parseColor(v))
+
 				elseif k == "glyphPadding" then
 					currentOutDescr.glyphPaddingU, currentOutDescr.glyphPaddingR, currentOutDescr.glyphPaddingD, currentOutDescr.glyphPaddingL = fileAssert(rbmfFile, parseUint4Sides(v))
 				elseif k == "glyphSpacing" then
@@ -440,21 +446,8 @@ function love.run()
 				elseif k == "outlineWidth" then
 					currentOutDescr.outlineWidth = fileAssert(rbmfFile, parseUint(v))
 				elseif k == "outlineColor" then
-					local r, g, b, a = v:match"^(%d*%.?%d+) +(%d*%.?%d+) +(%d*%.?%d+) +(%d*%.?%d+)$"
-
-					r = tonumber(r)
-					g = tonumber(g)
-					b = tonumber(b)
-					a = tonumber(a)
-
-					if not (r and g and b and a) then
-						fileError(rbmfFile, "Invalid color format: %s", v)
-					end
-
-					currentOutDescr.outlineColor[1] = math.min(math.max(r, 0), 1)
-					currentOutDescr.outlineColor[2] = math.min(math.max(g, 0), 1)
-					currentOutDescr.outlineColor[3] = math.min(math.max(b, 0), 1)
-					currentOutDescr.outlineColor[4] = math.min(math.max(a, 0), 1)
+					local c                = currentOutDescr.outlineColor
+					c[1], c[2], c[3], c[4] = fileAssert(rbmfFile, parseColor(v))
 
 				elseif k == "outlineMethod" then
 					if not (v == "auto" or v == "basic") then
@@ -1015,7 +1008,7 @@ function love.run()
 		for outIndex, outDescr in ipairs(rbmfFile.outputDescriptors) do
 			-- @Feature: Automatic kerning calculations?
 
-			outDescr.couldPack = not (rbmfFile.isColored or outDescr.outlineWidth > 0)
+			outDescr.couldPack = not (rbmfFile.isColored or outDescr.outlineWidth > 0) and isColor(outDescr.glyphColor, 1,1,1,1)
 			outDescr.pack      = false--outDescr.couldPack -- LÖVE does not seem to support packing yet as of 11.3.
 
 			-- Determine glyphs sizes (for this output).
@@ -1205,6 +1198,18 @@ function love.run()
 						!MAP_PIXEL(`out_imageData`, `x`,`y`)
 							!GET_PIXEL(`out_imageData`, nil,nil,nil,`a`, `x`,`y`)
 							!SET_PIXEL(`out_imageData`, `x`,`y`, 1,1,1,`a`)
+						!MAP_PIXEL_END()
+					end
+
+				elseif not isColor(outDescr.glyphColor, 1,1,1,1) then
+					local glyphR, glyphG, glyphB, glyphA = unpack(outDescr.glyphColor)
+
+					for _, out_imageData in ipairs(out_imageDatas) do
+						!GET_IMAGE_DATA_POINTER `out_imageData`
+
+						!MAP_PIXEL(`out_imageData`, `x`,`y`)
+							!GET_PIXEL(`out_imageData`, `r`,`g`,`b`,`a`, `x`,`y`)
+							!SET_PIXEL(`out_imageData`, `x`,`y`, `r*glyphR`,`g*glyphG`,`b*glyphB`,`a*glyphA`)
 						!MAP_PIXEL_END()
 					end
 				end
