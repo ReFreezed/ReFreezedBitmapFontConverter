@@ -1109,10 +1109,16 @@ function love.run()
 			end
 			table.insert(out_descriptorBuffer, "\n")
 
+			local out_lineHeight = (
+				in_lineHeight
+				+ (outDescr.paddingAffectsRenderSpacing and (outDescr.glyphPaddingU+outDescr.glyphPaddingD)*outDescr.mipmapAlignment or 0)
+				+ (outDescr.outlineAffectsRenderSpacing and outDescr.outlineWidth or 0)
+			)
+
 			table.insert(out_descriptorBuffer, F(
 				'common lineHeight=%d base=%d scaleW=%d scaleH=%d pages=%d packed=%d alphaChnl=0 redChnl=0 greenChnl=0 blueChnl=0\n',
-				in_lineHeight, -- lineHeight
-				in_lineHeight, -- base  @Incomplete: Some way of specifying this. (Probably low priority.)
+				out_lineHeight, -- lineHeight
+				out_lineHeight, -- base  @Incomplete: Some way of specifying this. (Probably low priority.)
 				pageWidth, pageHeight, -- scaleW, scaleH
 				#out_imageDatas, -- pages
 				(outDescr.pack and 1 or 0) -- packed
@@ -1221,7 +1227,7 @@ function love.run()
 				local xAdvance = (
 					glyphInfo.inW0
 					+ outDescr.renderSpacing
-					+ (outDescr.paddingAffectsRenderSpacing and outDescr.glyphPaddingL*outDescr.mipmapAlignment+outDescr.glyphPaddingR or 0)
+					+ (outDescr.paddingAffectsRenderSpacing and (outDescr.glyphPaddingL+outDescr.glyphPaddingR)*outDescr.mipmapAlignment or 0)
 					+ (outDescr.outlineAffectsRenderSpacing and outDescr.outlineWidth or 0)
 				)
 				table.insert(out_descriptorBuffer, F(
