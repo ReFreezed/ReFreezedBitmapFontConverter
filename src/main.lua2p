@@ -144,10 +144,10 @@ local function GlyphInfo(cp)
 		outW = 0,
 		outH = 0,
 
-		outImageIndex = 1,
-		outChannel    = 1, -- Ignored if not packing.
-		outX          = 0,
-		outY          = 0,
+		outPage    = 1,
+		outChannel = 1, -- Ignored if not packing.
+		outX       = 0,
+		outY       = 0,
 	}
 end
 
@@ -1057,24 +1057,42 @@ function love.run()
 			local pageWidth, pageHeight, pageCount
 
 			if outDescr.imageBounds == "smallest" then
-				local w, h, _pageCount = makeGlyphLayout(outDescr, glyphs, out_imageMaxSize, 1/0, true)
+				local bestMaxH      = out_imageMaxSize
+				local bestPageCount = #glyphs
+				local maxH          = bestMaxH
+
+				while true do
+					local w, h, _pageCount, rowInfos = makeGlyphLayout(outDescr, glyphs, out_imageMaxSize,maxH, bestPageCount, false)
+					if not w or h >= maxH then  break  end
+
+					bestPageCount = _pageCount
+					bestMaxH      = h
+
+					-- Try to move the smallest row(s) to other pages for the next iteration.
+					if not rowInfos[2] then  break  end
+
+					maxH = h - 1 -- @Speed: Can we make bigger jumps?
+				end
+
+				local w, h, _pageCount = makeGlyphLayout(outDescr, glyphs, out_imageMaxSize,bestMaxH, 1/0, true)
 				pageWidth              = math.ceil(w / 2) * 2 -- Even numbers are safer than odd, yo.
 				pageHeight             = math.ceil(h / 2) * 2
 				pageCount              = _pageCount
 
 			elseif outDescr.imageBounds == "poweroftwo" then
-				local w, h, _pageCount = makeGlyphLayout(outDescr, glyphs, out_imageMaxSize, 1/0, true)
+				-- @Incomplete: Iterative shrinking! (Does it make a difference here specifically?)
+				local w, h, _pageCount = makeGlyphLayout(outDescr, glyphs, out_imageMaxSize,out_imageMaxSize, 1/0, true)
 				pageWidth              = 2 ^ math.ceil(math.log(w) / math.log(2))
 				pageHeight             = 2 ^ math.ceil(math.log(h) / math.log(2))
 				pageCount              = _pageCount
 
 			elseif outDescr.imageBounds == "poweroftwosquare" then
 				local bestMaxSize   = out_imageMaxSize
-				local bestPageCount = 1/0
+				local bestPageCount = #glyphs
 				local maxSize       = bestMaxSize
 
 				while maxSize >= 1 do
-					local w, h, _pageCount = makeGlyphLayout(outDescr, glyphs, maxSize, bestPageCount, false)
+					local w, h, _pageCount = makeGlyphLayout(outDescr, glyphs, maxSize,maxSize, bestPageCount, false)
 					if not w then  break  end
 
 					bestPageCount = _pageCount
@@ -1083,7 +1101,7 @@ function love.run()
 					maxSize = .5 * maxSize
 				end
 
-				local w, h, _pageCount = makeGlyphLayout(outDescr, glyphs, bestMaxSize, 1/0, true)
+				local w, h, _pageCount = makeGlyphLayout(outDescr, glyphs, bestMaxSize,bestMaxSize, 1/0, true)
 				pageWidth              = 2 ^ math.ceil(math.log(math.max(w, h)) / math.log(2))
 				pageHeight             = pageWidth
 				pageCount              = _pageCount
@@ -1094,7 +1112,7 @@ function love.run()
 
 			if pageWidth > out_imageMaxSize or pageHeight > out_imageMaxSize then
 				errorLine(
-					"Image '%s' need a bigger size limit than %dx%d. (The calculated minimum size became %.0fx%.0f)",
+					"Output image '%s' need a bigger size limit than %dx%d. (The calculated minimum size became %.0fx%.0f)",
 					outDescr.pathImage, out_imageMaxSize, out_imageMaxSize, pageWidth, pageHeight
 				)
 			end
@@ -1156,7 +1174,7 @@ function love.run()
 					!GET_IMAGE_DATA_POINTER `out_imageData`
 
 					for _, glyphInfo in ipairs(glyphs) do
-						if glyphInfo.outImageIndex == imageIndex and glyphInfo.outW > 0 then
+						if glyphInfo.outPage == imageIndex and glyphInfo.outW > 0 then
 							local outX1 = glyphInfo.outX + outDescr.glyphPaddingL * outDescr.mipmapAlignment -- Note: Packed glyphs have no outlines.
 							local outY1 = glyphInfo.outY + outDescr.glyphPaddingU * outDescr.mipmapAlignment
 							local outX2 = outX1 + glyphInfo.inW - 1
@@ -1201,7 +1219,7 @@ function love.run()
 			else
 				for _, glyphInfo in ipairs(glyphs) do
 					if glyphInfo.outW > 0 then
-						out_imageDatas[glyphInfo.outImageIndex]:paste(
+						out_imageDatas[glyphInfo.outPage]:paste(
 							in_imageData,
 							glyphInfo.outX + outDescr.glyphPaddingL * outDescr.mipmapAlignment + outDescr.outlineWidth, -- dx
 							glyphInfo.outY + outDescr.glyphPaddingU * outDescr.mipmapAlignment + outDescr.outlineWidth, -- dy
@@ -1253,7 +1271,7 @@ function love.run()
 					glyphInfo.outW, glyphInfo.outH, -- width, height
 					glyphInfo.inOffsetX, glyphInfo.inOffsetY, -- xoffset, yoffset
 					xAdvance, -- xadvance
-					glyphInfo.outImageIndex-1, -- page
+					glyphInfo.outPage-1, -- page
 					(outDescr.pack and 2^(glyphInfo.outChannel-1) or 15) -- chnl
 				))
 			end
@@ -1553,6 +1571,7 @@ function love.run()
 				end
 
 				-- Delete old extra pages.
+				-- @Robustness: Delete pages in reverse order in case there's an error to prevent leaving accidental garbage files.
 				for imageIndex = #out_imageDatas+1, 2^52 do
 					local filename = outputImageFilenameBaseToFilename(filenameBase, imageIndex)
 					pathObj:setFilename(filename)

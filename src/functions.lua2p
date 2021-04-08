@@ -621,103 +621,106 @@ function _G.getLast(t)
 end
 
 
-do
-	local function isPositionEarlier(i1,x1,y1, i2,x2,y2)
-		if i1 ~= i2 then  return (i1 < i2)  end
-		if y1 ~= y2 then  return (y1 < y2)  end
-		return (x1 < x2)
-	end
 
-	-- pageWidth, pageHeight, pageCount = makeGlyphLayout( outDescr, glyphs, imageMaxSize, maxPages, forReal )
-	-- Returns nil if pageCount exceeds maxPages.
-	function _G.makeGlyphLayout(outDescr, glyphs, imageMaxSize, maxPages, forReal)
-		local pack = outDescr.pack
+-- pageWidth, pageHeight, pageCount, rowInfos = makeGlyphLayout( outDescr, glyphs, maxPageWidth,maxPageHeight, maxPages, forReal )
+-- Glyphs are expected to be sorted by height, when width.
+-- Returns nil if pageCount exceeds maxPages.
+function _G.makeGlyphLayout(outDescr, glyphs, maxPageW,maxPageH, maxPages, forReal)
+	local maxW = maxPageW - outDescr.imagePaddingH
+	local maxH = maxPageH - outDescr.imagePaddingV
 
-		local maxW = imageMaxSize - outDescr.imagePaddingH
-		local maxH = imageMaxSize - outDescr.imagePaddingV
+	local glyphSpacingH = outDescr.glyphSpacingH
+	local glyphSpacingV = outDescr.glyphSpacingV
 
-		local glyphSpacingH = outDescr.glyphSpacingH
-		local glyphSpacingV = outDescr.glyphSpacingV
+	local pageWidth  = 2 -- @Hardcoded minimum page size.
+	local pageHeight = 2
+	local pageCount  = 1
 
-		local pageWidth  = 2 -- @Hardcoded minimum page size.
-		local pageHeight = 2
-		local pageCount  = 1
+	local x0 = outDescr.imagePaddingH
+	local y0 = outDescr.imagePaddingV
 
-		local x0 = outDescr.imagePaddingH
-		local y0 = outDescr.imagePaddingV
+	local rowInfos    = {{page=1, nextX=x0, y=y0, height=glyphs[1].outH}} -- Note: We never need to update any rowInfo.height because of how the glyphs are sorted.
+	local pageHeights = {[1]=glyphs[1].outH}
 
-		local xs      = {--[[r]]x0, --[[g]]x0, --[[b]]x0, --[[a]]x0}
-		local ys      = {--[[r]]y0, --[[g]]y0, --[[b]]y0, --[[a]]y0}
-		local maxYs   = {--[[r]]y0, --[[g]]y0, --[[b]]y0, --[[a]]y0}
-		local indices = {--[[r]]1,  --[[g]]1,  --[[b]]1,  --[[a]]1 }
+	local ceil = math.ceil
+	local max  = math.max
 
-		local hasGlyphs = {--[[ [pageIndex1]=hasGlyphs, ... ]]}
+	for _, glyphInfo in ipairs(glyphs) do
+		if glyphInfo.inW > 0 then
+			-- Note: Glyphs will automatically be mipmap-aligned because of their already-determined final size
+			-- and our layout algorithm plus our rule that you cannot mix most spacings and mipmaps.
+			local wPadded = glyphInfo.outW
+			local hPadded = glyphInfo.outH
+			local rowInfo = nil
 
-		local ceil = math.ceil
-		local max  = math.max
-
-		for _, glyphInfo in ipairs(glyphs) do
-			if glyphInfo.inW > 0 then
-				-- Note: Glyphs will automatically be mipmap-aligned because of their already-determined final size
-				-- and our layout algorithm plus our rule that you cannot mix most spacings and mipmaps.
-				local wPadded = glyphInfo.outW
-				local hPadded = glyphInfo.outH
-
-				local channel = 1
-
-				if pack then
-					if isPositionEarlier(indices[2],xs[2],ys[2], indices[channel],xs[channel],ys[channel]) then  channel = 2  end
-					if isPositionEarlier(indices[3],xs[3],ys[3], indices[channel],xs[channel],ys[channel]) then  channel = 3  end
-					if isPositionEarlier(indices[4],xs[4],ys[4], indices[channel],xs[channel],ys[channel]) then  channel = 4  end
-				end
-
-				if xs[channel]+wPadded > maxW and hasGlyphs[indices[channel]] then
-					xs[channel] = x0
-					ys[channel] = maxYs[channel] + 1 + glyphSpacingV
-
-					if ys[channel]+hPadded > maxH then
-						ys[channel]      = y0
-						maxYs[channel]   = y0
-						indices[channel] = indices[channel] + 1
-					end
-				end
-
-				if forReal then
-					glyphInfo.outImageIndex = indices[channel]
-					glyphInfo.outChannel    = channel
-					glyphInfo.outX          = xs[channel]
-					glyphInfo.outY          = ys[channel]
-				end
-
-				pageWidth  = max(pageWidth,  xs[channel]+wPadded)
-				pageHeight = max(pageHeight, ys[channel]+hPadded)
-				pageCount  = max(pageCount,  indices[channel])
-
-				xs[channel]    = xs[channel] + wPadded + glyphSpacingH
-				maxYs[channel] = max(maxYs[channel], ys[channel]+hPadded-1)
-
-				hasGlyphs[indices[channel]] = true
-
-				if pageCount > maxPages then
-					return nil
+			for _, _rowInfo in ipairs(rowInfos) do
+				if _rowInfo.nextX+wPadded <= maxW and _rowInfo.y+hPadded <= maxH then
+					rowInfo = _rowInfo
+					break
 				end
 			end
-		end--for glyphs
 
-		pageWidth  = pageWidth  + outDescr.imagePaddingH
-		pageHeight = pageHeight + outDescr.imagePaddingV
+			if not rowInfo then
+				local lastRowInfo = rowInfos[#rowInfos]
+				rowInfo           = {page=lastRowInfo.page, nextX=x0, y=lastRowInfo.y+lastRowInfo.height+glyphSpacingV, height=hPadded}
 
-		return pageWidth, pageHeight, pageCount
+				if rowInfo.y+hPadded > maxH then
+					rowInfo.page = pageCount + 1 -- Fallback if the loop below doesn't find an existing page to fit the row in.
+					rowInfo.y    = y0
+
+					for page = 1, pageCount do
+						if pageHeights[page]+glyphSpacingV+hPadded <= maxH then
+							rowInfo.page = page
+							rowInfo.y    = pageHeights[page] + glyphSpacingV
+							break
+						end
+					end
+
+					pageCount = max(pageCount, rowInfo.page)
+					if pageCount > maxPages then  return nil  end
+				end
+
+				table.insert(rowInfos, rowInfo)
+				pageHeights[rowInfo.page] = max((pageHeights[rowInfo.page] or 0), rowInfo.y+rowInfo.height)
+			end
+
+			if forReal then
+				glyphInfo.outPage = rowInfo.page
+				glyphInfo.outX    = rowInfo.nextX
+				glyphInfo.outY    = rowInfo.y
+			end
+
+			pageWidth  = max(pageWidth,  rowInfo.nextX + wPadded)
+			pageHeight = max(pageHeight, rowInfo.y     + hPadded)
+
+			rowInfo.nextX = rowInfo.nextX + wPadded + glyphSpacingH
+			-- @Speed?: "Forget" row if there's literally no more space.
+		end
+	end--for glyphs
+
+	pageWidth  = pageWidth  + outDescr.imagePaddingH
+	pageHeight = pageHeight + outDescr.imagePaddingV
+
+	if forReal and outDescr.pack then
+		local floor = math.floor
+
+		for _, glyphInfo in ipairs(glyphs) do
+			glyphInfo.outChannel = (glyphInfo.outPage-1) % 4 + 1
+			glyphInfo.outPage    = floor((glyphInfo.outPage-1) / 4 + 1)
+		end
 	end
+
+	return pageWidth, pageHeight, pageCount, rowInfos
 end
 
 
 
 function _G.isColor(color, r,g,b,a)
-	return math.floor(color[1]*255+.5) == math.floor(r*255+.5)
-	   and math.floor(color[2]*255+.5) == math.floor(g*255+.5)
-	   and math.floor(color[3]*255+.5) == math.floor(b*255+.5)
-	   and math.floor(color[4]*255+.5) == math.floor(a*255+.5)
+	local floor = math.floor
+	return floor(color[1]*255+.5) == floor(r*255+.5)
+	   and floor(color[2]*255+.5) == floor(g*255+.5)
+	   and floor(color[3]*255+.5) == floor(b*255+.5)
+	   and floor(color[4]*255+.5) == floor(a*255+.5)
 end
 
 
