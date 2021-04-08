@@ -9,7 +9,7 @@
 --=
 --==============================================================
 
-	addCodepoint
+	addCodepoint, warnAboutAnyMissingCodepoints
 	addKerningPairs
 	connectToDirectory, mustConnectToDirectory
 	errorf, warning, errorLine
@@ -49,6 +49,39 @@ function _G.addCodepoint(rbmfFile, row, cp, icon)
 	if icon then  table.insert(rbmfFile.icons, icon)  end
 
 	rbmfFile.lastRow = math.max(rbmfFile.lastRow, row)
+end
+
+function _G.warnAboutAnyMissingCodepoints(missingCps, pathForMessage)
+	if not missingCps[1] then  return  end
+
+	table.sort(missingCps) -- @Robustness: We should probably make missingCps into a copy first, but it doesn't matter right now! 2021-04-07
+
+	local missingCpsByBlock = {}
+	local blockNames        = {}
+
+	for _, cp in ipairs(missingCps) do
+		local blockName              = getUnicodeBlockName(cp)
+		missingCpsByBlock[blockName] = missingCpsByBlock[blockName] or {}
+		table.insert(missingCpsByBlock[blockName], cp)
+	end
+
+	for blockName in pairs(missingCpsByBlock) do
+		table.insert(blockNames, blockName)
+	end
+	table.sort(blockNames)
+
+	for _, blockName in ipairs(blockNames) do
+		local cpStrings = {}
+
+		for i, cp in ipairs(missingCpsByBlock[blockName]) do -- Note: These are sorted because we sorted missingCps.
+			cpStrings[i] = F("U+%04X", cp)
+		end
+
+		warning(
+			"%s: Font is missing %d '%s' codepoints:\n  %s",
+			pathForMessage, #cpStrings, blockName, table.concat(cpStrings, " ")
+		)
+	end
 end
 
 

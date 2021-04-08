@@ -13,11 +13,13 @@ local CMD_HELP = [=[
 	$ RbmfConverter.exe inputPath1 [inputPath2 ...] [options]
 
 	Options:
-		--outdir   <outputDirectory>     # Where to output files. (Default: Same directory as the input.)
-		--icons    <outputFilePath>      # Where to put the icons file if any icons are specified. (Default: <outputDirectory>/.fonticons)
-		--mergeicons                     # Merge new icons with existing icons if the icons file exists. (Default: Icon file is replaced.)
-		--maxsize  <outputImageMaxSize>  # Default: 2048
-		--textfile <filePath1> [--textfile <filePath2> ...]
+		--outdir   <directory>  # Where to output files. (Default: Same directory as the input.)
+		--maxsize  <size>       # Maximum output image size in pixels. (Default: 2048)
+		--icons    <filePath>   # Where to write the icons file if any icons are specified. (Default: <outputDirectory>/.fonticons)
+		--mergeicons            # Merge new icons with existing icons if the icons file exists. (Default: File is replaced.)
+		--missing  <filePath>   # File to write characters that are missing from at least one font. (Default: No file is written.)
+		--mergemissing          # Merge missing characters with existing characters if the missing file exists. (Default: File is replaced.)
+		--textfile <filePath1> [--textfile <filePath2> ...]  # Files containing characters to rasterize when using vector fonts.
 
 	Notes:
 		<inputPath> can be a .rbmf file or a directory with .rbmf files.
@@ -67,6 +69,8 @@ local function RbmfFile()
 		textCodepoints = {--[[ [cp1]=true, ... ]]},
 
 		outDirectory = "",
+
+		missingCodepoints = {--[[ cp1, ... ]]},
 	}
 end
 
@@ -184,9 +188,11 @@ function love.run()
 	local in_paths           = {}
 	local in_textFilesForAll = {}
 	local out_directory      = ""
+	local out_imageMaxSize   = 2048
 	local out_iconsPath      = ""
 	local out_mergeIcons     = false
-	local out_imageMaxSize   = 2048
+	local out_missingPath    = ""
+	local out_mergeMissing   = false
 
 	local args = love.arg.parseGameArguments(programArguments)
 	local i    = 1
@@ -224,6 +230,15 @@ function love.run()
 
 		elseif args[i] == "--mergeicons" then
 			out_mergeIcons = true
+			i = i+1
+
+		elseif args[i] == "--missing" then
+			out_missingPath = args[i+1] or errorLine("Argument: Missing path after '%s'.", args[i])
+			out_missingPath = normalizePath(out_missingPath)
+			i = i+2
+
+		elseif args[i] == "--mergemissing" then
+			out_mergeMissing = true
 			i = i+1
 
 		elseif args[i] == "--textfile" then
@@ -620,7 +635,6 @@ function love.run()
 		end
 
 		rbmfFile.useTextFiles = (in_textFilesForAll[1] or rbmfFile.textFilePaths[1]) ~= nil
-
 		if not rbmfFile.useTextFiles and rbmfFile.lastRow == 0 then
 			fileError(rbmfFile, "No glyphs specified or imported from text files.")
 		end
@@ -662,23 +676,28 @@ function love.run()
 	--
 	-- Load glyph filter text files
 	--
+	local function processTextFile(pathObj, textCpSet)
+		printf("Loading text file: %s", pathObj:toString())
+
+		local s, err = getFileContents(pathObj)
+		if not s then
+			errorLine("Could not open text file '%s'. (%s)", pathObj:toString(), err)
+		end
+
+		for _, cp in utf8.codes(s) do
+			if cp >= 32 then  textCpSet[cp] = true  end -- @Robustness: Better printable character check.
+		end
+	end
+
+	local textCodepointsForAll = {}
+	for _, path in ipairs(in_textFilesForAll) do
+		processTextFile(Path(path), textCodepointsForAll)
+	end
+
 	for _, rbmfFile in ipairs(rbmfFiles) do
 		if rbmfFile.useTextFiles then
-			local function processTextFile(pathObj, textCpSet)
-				printf("Loading text file: %s", pathObj:toString())
-
-				local s, err = getFileContents(pathObj)
-				if not s then
-					errorLine("Could not open text file '%s'. (%s)", pathObj:toString(), err)
-				end
-
-				for _, cp in utf8.codes(s) do
-					if cp >= 32 then  textCpSet[cp] = true  end -- @Robustness: Better printable character check.
-				end
-			end
-
-			for _, path in ipairs(in_textFilesForAll) do -- @Speed: Only process these files from args once.
-				processTextFile(Path(path), rbmfFile.textCodepoints)
+			for cp in pairs(textCodepointsForAll) do
+				rbmfFile.textCodepoints[cp] = true
 			end
 			for _, path in ipairs(rbmfFile.textFilePaths) do
 				processTextFile(Path(path, Path("..", rbmfFile.path)), rbmfFile.textCodepoints)
@@ -698,7 +717,7 @@ function love.run()
 		local glyphs = {}
 
 		-- Vector font
-		----------------
+		----------------------------------------------------------------
 
 		if rbmfFile.fontFilename ~= "" then
 			if not love.window then
@@ -727,15 +746,11 @@ function love.run()
 			in_lineDist   = in_lineHeight + 1
 
 			-- Collect all glyphs. Note that we set the coords later.
-			local missingCps = {}
-
-			for cp in pairs(rbmfFile.textCodepoints) do -- textCodepoints should be empty if useTextFiles is unset.
-				if font:hasGlyphs(utf8.char(cp)) then
+			for cp in pairs(rbmfFile.textCodepoints) do -- Note: textCodepoints should be empty if useTextFiles is unset.
+				if font:hasGlyphs(cp) then
 					table.insert(glyphs, GlyphInfo(cp))
 				else
-					local blockName       = getUnicodeBlockName(cp)
-					missingCps[blockName] = missingCps[blockName] or {}
-					table.insert(missingCps[blockName], cp)
+					table.insert(rbmfFile.missingCodepoints, cp)
 				end
 			end
 
@@ -743,37 +758,18 @@ function love.run()
 				for _, cp in ipairs(cpsOnRow) do
 					if rbmfFile.textCodepoints[cp] then
 						-- void
-					elseif font:hasGlyphs(utf8.char(cp)) then
+					elseif font:hasGlyphs(cp) then
 						table.insert(glyphs, GlyphInfo(cp))
 					else
-						local blockName       = getUnicodeBlockName(cp)
-						missingCps[blockName] = missingCps[blockName] or {}
-						table.insert(missingCps[blockName], cp)
+						table.insert(rbmfFile.missingCodepoints, cp)
 					end
 				end
 			end
 
+			warnAboutAnyMissingCodepoints(rbmfFile.missingCodepoints, rbmfFile.fontFilename)
+
 			if not glyphs[1] then
 				fileError(rbmfFile, "No glyphs to export from fontFile '%s'.", rbmfFile.fontFilename)
-			end
-
-			if next(missingCps) then
-				local blockNames = {}
-
-				for blockName, cps in pairs(missingCps) do
-					table.insert(blockNames, blockName)
-					table.sort(cps)
-				end
-
-				table.sort(blockNames)
-
-				for _, blockName in ipairs(blockNames) do
-					local cps = missingCps[blockName]
-					warning(
-						"%s: Font is missing %d '%s' codepoints:\n  %s",
-						rbmfFile.fontFilename, #cps, blockName, table.concat(cps, " ")
-					)
-				end
 			end
 
 			-- Determine virtual input image size and glyph coords.
@@ -836,7 +832,7 @@ function love.run()
 			fontCanvas:release()
 
 		-- Bitmap font
-		----------------
+		----------------------------------------------------------------
 
 		else--if rbmfFile.fontFilename == "" then
 			local imagePathObj = Path(rbmfFile.path)
@@ -902,15 +898,22 @@ function love.run()
 			end
 
 			-- Collect all glyphs.
-			local textCps = (rbmfFile.useTextFiles and rbmfFile.textCodepoints or nil)
+			--
+			-- Note: The output should be stable even if we process rows out-of-order
+			-- here because we sort the glyphs before determining layout and nothing
+			-- else should be affected by the processing order. 2021-04-07
+			--
+			local filterCps      = (rbmfFile.useTextFiles and rbmfFile.textCodepoints or nil)
+			local existingGlyphs = {}
 
-			for row, cpsOnRow in pairs(rbmfFile.codepoints) do -- @Robustness: Is the output stable if we use pairs() here?
+			for row, cpsOnRow in pairs(rbmfFile.codepoints) do
 				local x           = 1
 				local y           = 1 + (row-1) * in_lineDist
 				local glyphStartX = x
 
 				for i, cp in ipairs(cpsOnRow) do
-					local xNext = -1
+					existingGlyphs[cp] = true
+					local xNext        = -1
 
 					for x = x, in_imageData:getWidth()-1 do
 						!GET_PIXEL(`in_imageData`, `r`,`g`,`b`,`a`, `x`,`y`)
@@ -930,7 +933,7 @@ function love.run()
 
 					x = xNext
 
-					if not (textCps and not textCps[cp]) then
+					if not (filterCps and not filterCps[cp]) then
 						local glyphInfo = GlyphInfo(cp)
 						glyphInfo.inX1  = glyphStartX
 						glyphInfo.inY1  = y
@@ -946,9 +949,18 @@ function love.run()
 					glyphStartX = x
 				end
 			end
+
+			-- Check for missing glyphs.
+			for cp in pairs(rbmfFile.textCodepoints) do
+				if not existingGlyphs[cp] then
+					table.insert(rbmfFile.missingCodepoints, cp)
+				end
+			end
+
+			warnAboutAnyMissingCodepoints(rbmfFile.missingCodepoints, rbmfFile.path)
 		end
 
-		----------------
+		----------------------------------------------------------------
 
 		if not glyphs[1] then
 			fileError(rbmfFile, "No glyphs to export.")
@@ -1310,7 +1322,6 @@ function love.run()
 						-- all we have are pixels. Maybe we can do something better for TrueType fonts?
 						--
 						!MAP_PIXEL(`out_imageData`, `x`,`y`)
-							---------------------
 							!GET_PIXEL(`out_imageData`, `r`,`g`,`b`,`a`, `x`,`y`)
 
 							local neighborAlpha = a
@@ -1570,7 +1581,7 @@ function love.run()
 	--
 	-- Write icons file
 	--
-	local wroteIcons = false
+	local triedWritingIcons = false
 
 	if out_iconsPath ~= "" then
 		local icons = getIcons()
@@ -1599,12 +1610,65 @@ function love.run()
 				errorLine("Could not write icons file '%s'. (%s)", pathObj:toString(), err)
 			end
 
-			wroteIcons = true
+			triedWritingIcons = true
 		end
 	end
 
-	if not wroteIcons then
+	if not triedWritingIcons then
 		printf("No icons file written.")
+	end
+
+	--
+	-- Write missing characters file
+	--
+	if out_missingPath ~= "" then
+		local allMissingCps    = {}
+		local allMissingCpsSet = {}
+
+		local pathObj       = Path(out_missingPath)
+		local dir, filename = pathObj:getDirectoryAndFilename()
+
+		if out_mergeMissing and isFile(pathObj:toString()) then
+			printf("Loading missing characters file: %s", pathObj:toString())
+
+			local s, err = getFileContents(pathObj)
+			if not s then
+				errorLine("Could not open missing characters file '%s'. (%s)", pathObj:toString(), err)
+			end
+
+			for _, cp in utf8.codes(s) do
+				if not allMissingCpsSet[cp] then
+					allMissingCpsSet[cp] = true
+					table.insert(allMissingCps, cp)
+				end
+			end
+		end
+
+		for _, rbmfFile in ipairs(rbmfFiles) do
+			for _, cp in ipairs(rbmfFile.missingCodepoints) do
+				if not allMissingCpsSet[cp] then
+					allMissingCpsSet[cp] = true
+					table.insert(allMissingCps, cp)
+				end
+			end
+		end
+
+		table.sort(allMissingCps)
+
+		local buffer = {}
+
+		for _, cp in ipairs(allMissingCps) do
+			table.insert(buffer, utf8.char(cp))
+		end
+
+		printf("Writing missing characters file (%d codepoints): %s", #allMissingCps, pathObj:toString())
+		reservePathForWriting(pathObj:toString(), "output missing characters file")
+
+		mustConnectToDirectory(dir)
+		local ok, err = LF.write(filename, table.concat(buffer))
+		if not ok then
+			errorLine("Could not write missing characters file '%s'. (%s)", pathObj:toString(), err)
+		end
 	end
 
 	--

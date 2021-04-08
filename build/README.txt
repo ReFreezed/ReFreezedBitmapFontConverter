@@ -55,24 +55,32 @@ The filenames of outputted files is specified in each font descriptor.
 
 Options:
 
-    --outdir <outputDirectory>
+    --outdir <directory>
     Where to output files. (Default: Same directory as the input.)
 
-    --icons <outputFilePath>
+    --maxsize <size>
+    Maximum width and height of outputted images in pixels. (Default: 2048)
+
+    --icons <filePath>
     Where to put the icons file if any icons are specified in any of the input
-    files. (Default: <outputDirectory>/.fonticons)
+    descriptors. (Default: <outputDirectory>/.fonticons)
 
     --mergeicons
     Merge new icons with existing icons if the icons file already exists.
-    (Default: Icons file is replaced)
+    (Default: File is replaced)
 
-    --maxsize <imageSize>
-    Maximum width and height of outputted images. (Default: 2048)
+    --missing <filePath>
+    File to write characters that are missing from at least one input font.
+    (Default: No file is written.)
+
+    --mergemissing
+    Merge missing characters with existing characters if the missing file
+    already exists. (Default: File is replaced.)
 
     --textfile <filePath1> [--textfile <filePath2> ...]
+    Files containing characters to rasterize when using vector fonts.
     Note: Relative paths will be relative to the current working directory,
     unlike the 'textFile' input parameter in the descriptor.
-
 
 
 4. Font image
@@ -210,29 +218,29 @@ File structure:
     # smallest possible image, 'poweroftwo' forces the width and height to be
     # power-of-two, and 'poweroftwosquare' forces the width and height to be
     # both power-of-two and the same length. (Default: smallest)
-	imageBounds=rule
+    imageBounds=rule
 
     # Set the image encoding. Possible values are 'png' or 'tga'.
     # (Default: png)
-	imageEncoding=encoding
+    imageEncoding=encoding
 
-	# If the font will be subject to mipmapping at a later point, this
-	# specifies how many mipmap levels are expected/relevant. Setting this to
-	# a value above 1 will align glyphs in such a way so that bleeding will be
-	# minimized when the image is downscaled 50% at a time until a certain
-	# point. (Default: 1, i.e. no additional levels for mipmapping are
-	# assumed)
-	#
-	# Note: Cannot be combined with glyphSpacing or imagePadding (but
-	# glyphPadding works fine).
-	#
-	# Note: glyphPadding is multiplied by this so that the most downscaled
-	# image will have the visible padding of the unmultiplied glyphPadding.
-	#
-	# Note: This parameter should not be needed if the program creating the
-	# mipmaps is smart enough.
-	#
-	alignForMipmapLevels=levels
+    # If the font will be subject to mipmapping at a later point, this
+    # specifies how many mipmap levels are expected/relevant. Setting this to
+    # a value above 1 will align glyphs in such a way so that bleeding will be
+    # minimized when the image is downscaled 50% at a time until a certain
+    # point. (Default: 1, i.e. no additional levels for mipmapping are
+    # assumed)
+    #
+    # Note: Cannot be combined with glyphSpacing or imagePadding (but
+    # glyphPadding works fine).
+    #
+    # Note: glyphPadding is multiplied by this so that the most downscaled
+    # image will have the visible padding of the unmultiplied glyphPadding.
+    #
+    # Note: This parameter should not be needed if the program creating the
+    # mipmaps is smart enough.
+    #
+    alignForMipmapLevels=levels
 
     # You can embed multiple custom values in the outputted BMFont file using
     # this format.
@@ -339,8 +347,8 @@ File structure, in addition to the above:
     # others control the level of hinting. (Default: normal)
     fontHinting=hintingMode
 
-    # Filename of a text file containing all characters you want to rasterize.
-    # You can use this instead of, or in conjunction with, numbered sections.
+    # Filename of a text file containing characters you want to rasterize. You
+    # can use this instead of, or in conjunction with, numbered sections.
     # (Every character will only be rasterized once.) There can be multiple
     # 'textFile' parameters. Note that relative paths are relative to the
     # .rbmf file.
