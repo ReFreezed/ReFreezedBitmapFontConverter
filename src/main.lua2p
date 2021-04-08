@@ -623,10 +623,6 @@ function love.run()
 			fileWarning(rbmfFile, "No outputs specified.")
 		end
 
-		if rbmfFile.textFilePaths[1] and rbmfFile.fontFilename == "" then
-			fileError(rbmfFile, "%d text files were specified, but no TrueType font.", #rbmfFile.textFilePaths)
-		end
-
 		if rbmfFile.fontFilename ~= "" and rbmfFile.fontSize == 0 then
 			fileError(rbmfFile, "A TrueType font was specified, but no font size.")
 		end
@@ -635,6 +631,13 @@ function love.run()
 		end
 
 		rbmfFile.useTextFiles = (in_textFilesForAll[1] or rbmfFile.textFilePaths[1]) ~= nil
+		if rbmfFile.useTextFiles and rbmfFile.fontFilename == "" then
+			if in_textFilesForAll[1] then
+				fileError(rbmfFile, "%d text files were specified (including arguments), but no TrueType font.", #rbmfFile.textFilePaths + #in_textFilesForAll)
+			else
+				fileError(rbmfFile, "%d text files were specified, but no TrueType font.", #rbmfFile.textFilePaths)
+			end
+		end
 		if not rbmfFile.useTextFiles and rbmfFile.lastRow == 0 then
 			fileError(rbmfFile, "No glyphs specified or imported from text files.")
 		end
@@ -951,6 +954,7 @@ function love.run()
 			end
 
 			-- Check for missing glyphs.
+			-- @Incomplete: This doesn't do anything until we got character filters or something implemented. (When we do, don't use textCodepoints!) 2021-04-08
 			for cp in pairs(rbmfFile.textCodepoints) do
 				if not existingGlyphs[cp] then
 					table.insert(rbmfFile.missingCodepoints, cp)
