@@ -578,9 +578,9 @@ end
 
 
 
-function _G.outputImageFilenameBaseToFilename(filenameBase, imageIndex)
+function _G.outputImageFilenameBaseToFilename(filenameBase, page)
 	local basename, ext = getBasenameAndExtensionWithDot(filenameBase)
-	return F("%s_%d%s", basename, imageIndex-1, ext)
+	return F("%s_%d%s", basename, page-1, ext)
 end
 
 
@@ -626,24 +626,44 @@ end
 -- Glyphs are expected to be sorted by height, when width.
 -- Returns nil if pageCount exceeds maxPages.
 function _G.makeGlyphLayout(outDescr, glyphs, maxPageW,maxPageH, maxPages, forReal)
+	local ceil = math.ceil
+	local max  = math.max
+
 	local maxW = maxPageW - outDescr.imagePaddingH
 	local maxH = maxPageH - outDescr.imagePaddingV
 
 	local glyphSpacingH = outDescr.glyphSpacingH
 	local glyphSpacingV = outDescr.glyphSpacingV
 
+	local alignment        = outDescr.glyphAlignment
+	local alignmentInv     = 1 / alignment
+	local alignmentOffsetX = outDescr.glyphAlignmentIncludesPadding and 0 or outDescr.glyphPaddingL
+	local alignmentOffsetY = outDescr.glyphAlignmentIncludesPadding and 0 or outDescr.glyphPaddingU
+
+	!(
+	local function ALIGN_X(expr)
+		return templateToLua(
+			`(ceil((($expr) + alignmentOffsetX) * alignmentInv) * alignment - alignmentOffsetX)`,
+			{expr=expr}
+		)
+	end
+	local function ALIGN_Y(expr)
+		return templateToLua(
+			`(ceil((($expr) + alignmentOffsetY) * alignmentInv) * alignment - alignmentOffsetY)`,
+			{expr=expr}
+		)
+	end
+	)
+
 	local pageWidth  = 2 -- @Hardcoded minimum page size.
 	local pageHeight = 2
 	local pageCount  = 1
 
-	local x0 = outDescr.imagePaddingH
-	local y0 = outDescr.imagePaddingV
+	local x0 = !!(ALIGN_X `outDescr.imagePaddingH`)
+	local y0 = !!(ALIGN_Y `outDescr.imagePaddingV`)
 
 	local rowInfos    = {{page=1, nextX=x0, y=y0, height=glyphs[1].outH}} -- Note: We never need to update any rowInfo.height because of how the glyphs are sorted.
 	local pageHeights = {[1]=glyphs[1].outH}
-
-	local ceil = math.ceil
-	local max  = math.max
 
 	for _, glyphInfo in ipairs(glyphs) do
 		if glyphInfo.inW > 0 then
@@ -653,16 +673,22 @@ function _G.makeGlyphLayout(outDescr, glyphs, maxPageW,maxPageH, maxPages, forRe
 			local hPadded = glyphInfo.outH
 			local rowInfo = nil
 
-			for _, _rowInfo in ipairs(rowInfos) do
-				if _rowInfo.nextX+wPadded <= maxW and _rowInfo.y+hPadded <= maxH then
-					rowInfo = _rowInfo
+			for _, existingRowInfo in ipairs(rowInfos) do
+				if existingRowInfo.nextX+wPadded <= maxW and existingRowInfo.y+hPadded <= maxH then
+					rowInfo = existingRowInfo
 					break
 				end
 			end
 
 			if not rowInfo then
 				local lastRowInfo = rowInfos[#rowInfos]
-				rowInfo           = {page=lastRowInfo.page, nextX=x0, y=lastRowInfo.y+lastRowInfo.height+glyphSpacingV, height=hPadded}
+
+				rowInfo = {
+					page   = lastRowInfo.page,
+					nextX  = x0,
+					y      = !!(ALIGN_Y `lastRowInfo.y + lastRowInfo.height + glyphSpacingV`),
+					height = hPadded,
+				}
 
 				if rowInfo.y+hPadded > maxH then
 					rowInfo.page = pageCount + 1 -- Fallback if the loop below doesn't find an existing page to fit the row in.
@@ -693,7 +719,8 @@ function _G.makeGlyphLayout(outDescr, glyphs, maxPageW,maxPageH, maxPages, forRe
 			pageWidth  = max(pageWidth,  rowInfo.nextX + wPadded)
 			pageHeight = max(pageHeight, rowInfo.y     + hPadded)
 
-			rowInfo.nextX = rowInfo.nextX + wPadded + glyphSpacingH
+			rowInfo.nextX = !!(ALIGN_X `rowInfo.nextX + wPadded + glyphSpacingH`)
+
 			-- @Speed?: "Forget" row if there's literally no more space.
 		end
 	end--for glyphs

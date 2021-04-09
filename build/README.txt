@@ -9,6 +9,7 @@ Website: https://github.com/ReFreezed/ReFreezedBitmapFontConverter
 4. Font image
 5. Font descriptor
 6. Icons
+7. Notes
 
 
 
@@ -181,7 +182,7 @@ File structure:
     # around each character, which may be useful for custom shaders). Also
     # note that padding does not affect the distance between characters when
     # rendered - that's what renderSpacing and kerning is for. Setting this to
-    # a positive number may remove black fringe around glyphs when text is
+    # a positive number may remove fringe around glyphs when text is
     # rendered rotated/scaled or at non-integer coordinates if linear
     # interpolation is used. The parameter has multiple formats.
     # (Default: 0 0 0 0)
@@ -190,8 +191,9 @@ File structure:
     glyphPadding=up horizontal down
     glyphPadding=up right down left
 
-    # Extra space between glyphs. The parameter has multiple formats.
-    # (Default: 0 0)
+    # Extra space between glyphs. It might be relevant to increase this if the
+    # font will be subject to mipmapping at a later point. The parameter has
+    # multiple formats. (Default: 0 0)
     glyphSpacing=spacing
     glyphSpacing=vertival horizontal
 
@@ -200,11 +202,33 @@ File structure:
     imagePadding=padding
     imagePadding=vertival horizontal
 
+    # Cell size in pixels for the grid that glyphs will be aligned on. It
+    # might be relevant to increase this if the font will be subject to
+    # mipmapping at a later point. (Default: 1)
+    glyphAlignment=alignment
+
+    # Specify whether glyphPadding should be seen as part of each glyph during
+    # alignment. (Default: false)
+    glyphAlignmentIncludesPadding=bool
+
+    # Control what RGB color transparent pixels should have. Possible values
+    # are 'full', 'border' or 'none'. 'full' will color all transparent pixels
+    # the same as the closest non-transparent pixel, 'border' will do the same
+    # but only one pixel around non-transparent pixels leaving the remaining
+    # pixels black, and 'none' will color all transparent pixels black.
+    # Setting this to 'full' or 'border' is likely to remove black fringe
+    # around glyphs when text is rendered rotated/scaled or at non-integer
+    # coordinates if linear interpolation is used. It might be relevant to set
+    # this to 'full' if the font will be subject to mipmapping at a later
+    # point. This parameter is only relevant for colored fonts, and only if no
+    # outline is added. (Default: border)
+    transparentColorFix=mode
+
     # Set the distance between glyphs when rendered (in addition to any
     # kerning). (Default: 1)
     renderSpacing=spacing
 
-    # Specify whether the padding should affect the distance between glyphs
+    # Specify whether glyphPadding should affect the distance between glyphs
     # when rendered. Possible values are 'true' or 'false'. (Default: false)
     paddingAffectsRenderSpacing=bool
 
@@ -217,32 +241,15 @@ File structure:
     # 'smallest', 'poweroftwo' or 'poweroftwosquare'. 'smallest' creates the
     # smallest possible image, 'poweroftwo' forces the width and height to be
     # power-of-two, and 'poweroftwosquare' forces the width and height to be
-    # both power-of-two and the same length. (Default: smallest)
+    # both power-of-two and the same length. Some hardware only supports
+    # power-of-two textures. (Default: smallest)
     imageBounds=rule
 
     # Set the image encoding. Possible values are 'png' or 'tga'.
     # (Default: png)
     imageEncoding=encoding
 
-    # If the font will be subject to mipmapping at a later point, this
-    # specifies how many mipmap levels are expected/relevant. Setting this to
-    # a value above 1 will align glyphs in such a way so that bleeding will be
-    # minimized when the image is downscaled 50% at a time until a certain
-    # point. (Default: 1, i.e. no additional levels for mipmapping are
-    # assumed)
-    #
-    # Note: Cannot be combined with glyphSpacing or imagePadding (but
-    # glyphPadding works fine).
-    #
-    # Note: glyphPadding is multiplied by this so that the most downscaled
-    # image will have the visible padding of the unmultiplied glyphPadding.
-    #
-    # Note: This parameter should not be needed if the program creating the
-    # mipmaps is smart enough.
-    #
-    alignForMipmapLevels=levels
-
-    # You can embed multiple custom values in the outputted BMFont file using
+    # You can embed multiple custom values in the outputted BMFont files using
     # this format.
     custom.someName=someValue
     # Examples:
@@ -345,7 +352,7 @@ File structure, in addition to the above:
     # TrueType hinting mode (for anti-aliasing). Possible values are 'normal',
     # 'light', 'none' or 'mono'. 'mono' disables anti-aliasing while the
     # others control the level of hinting. (Default: normal)
-    fontHinting=hintingMode
+    fontHinting=mode
 
     # Filename of a text file containing characters you want to rasterize. You
     # can use this instead of, or in conjunction with, numbered sections.
@@ -393,6 +400,18 @@ this:
 
     local text = ("{ogre} picked up {sword}"):gsub("{(%w+)}", icons)
     love.graphics.print(text)
+
+
+
+7. Notes
+==============================================================================
+
+Mipmapping:
+
+If a font will be subject to mipmapping at a later point it might be relevant
+to tweak the glyphAlignment and glyphSpacing parameters to fix downsized
+glyphs bleeding into each other. Setting transparentColorFix to 'full' may
+improve the color of the downsized glyphs.
 
 
 

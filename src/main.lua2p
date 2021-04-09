@@ -13,12 +13,12 @@ local CMD_HELP = [=[
 	$ RbmfConverter.exe inputPath1 [inputPath2 ...] [options]
 
 	Options:
-		--outdir   <directory>  # Where to output files. (Default: Same directory as the input.)
+		--outdir   <directory>  # Where to output files. (Default: Same directory as the input)
 		--maxsize  <size>       # Maximum output image size in pixels. (Default: 2048)
 		--icons    <filePath>   # Where to write the icons file if any icons are specified. (Default: <outputDirectory>/.fonticons)
-		--mergeicons            # Merge new icons with existing icons if the icons file exists. (Default: File is replaced.)
-		--missing  <filePath>   # File to write characters that are missing from at least one font. (Default: No file is written.)
-		--mergemissing          # Merge missing characters with existing characters if the missing file exists. (Default: File is replaced.)
+		--mergeicons            # Merge new icons with existing icons if the icons file exists. (Default: File is replaced)
+		--missing  <filePath>   # File to write characters that are missing from at least one font. (Default: No file is written)
+		--mergemissing          # Merge missing characters with existing characters if the missing file exists. (Default: File is replaced)
 		--textfile <filePath1> [--textfile <filePath2> ...]  # Files containing characters to rasterize when using vector fonts.
 
 	Notes:
@@ -99,6 +99,11 @@ local function OutputDescriptor()
 		outlineColor  = {0,0,0,1},
 		outlineMethod = "auto", -- "auto"|"basic"
 
+		glyphAlignment                = 1,
+		glyphAlignmentIncludesPadding = false,
+
+		transparentColorFix = "border", -- "none"|"border"|"full"
+
 		renderSpacing = 1,
 
 		paddingAffectsRenderSpacing = false,
@@ -106,8 +111,6 @@ local function OutputDescriptor()
 
 		imageBounds   = "smallest", -- "smallest"|"poweroftwo"|"poweroftwosquare"
 		imageEncoding = "png",      -- "png"|"tga"
-
-		alignForMipmapLevels = 1, -- Includes the original unresized image.
 
 		customValues = {--[[ [1]=k1, [k1]=v1, ... ]]},
 		--
@@ -119,8 +122,6 @@ local function OutputDescriptor()
 
 		couldPack = false,
 		pack      = false,
-
-		mipmapAlignment = 1, -- 2 ^ (alignForMipmapLevels - 1)
 	}
 end
 
@@ -159,6 +160,50 @@ end
 love.errhand = nil
 
 
+
+!if DEV then
+	local function debugViewImageData(imageData, opaque)
+		if opaque then
+			imageData:mapPixel(function(x,y, r,g,b,a)  return r,g,b,1  end)
+		end
+
+		require"love.window"
+		require"love.graphics"
+		require"love.timer"
+
+		love.window.setMode(1000, 800)
+
+		local image = love.graphics.newImage(imageData)
+		image:setFilter("nearest")
+
+		local scalePower = 1
+
+		function love.keypressed(key)
+			if key == "escape" then
+				love.event.quit()
+			elseif key == "+" or key == "kp+" then
+				scalePower = scalePower + 1
+			elseif key == "-" or key == "kp-" then
+				scalePower = scalePower - 1
+			end
+		end
+
+		return function()
+			love.event.pump()
+			for name, a,b,c,d,e,f in love.event.poll() do
+				if name == "quit" then  return 0  end
+				love.handlers[name](a,b,c,d,e,f)
+			end
+
+			love.graphics.reset()
+			love.graphics.clear()
+			love.graphics.draw(image, 0,0, 0, 2^scalePower)
+			love.graphics.present()
+
+			love.timer.sleep(.001)
+		end
+	end
+!end
 
 function love.run()
 	local startTime = require"socket".gettime()
@@ -470,6 +515,20 @@ function love.run()
 					end
 					currentOutDescr.outlineMethod = v
 
+				elseif k == "glyphAlignment" then
+					currentOutDescr.glyphAlignment = fileAssert(rbmfFile, parseUint(v))
+					if currentOutDescr.glyphAlignment < 1 then
+						fileError(rbmfFile, "Glyph alignment must be positive. (Value is '%s')", v)
+					end
+				elseif k == "glyphAlignmentIncludesPadding" then
+					currentOutDescr.glyphAlignmentIncludesPadding = fileAssert(rbmfFile, parseBool(v))
+
+				elseif k == "transparentColorFix" then
+					if not (v == "none" or v == "border" or v == "full") then
+						fileError(rbmfFile, "Invalid color fix value '%s'. (Valid values: none, border, full)", v)
+					end
+					currentOutDescr.transparentColorFix = v
+
 				elseif k == "renderSpacing" then
 					currentOutDescr.renderSpacing = fileAssert(rbmfFile, parseInt(v))
 
@@ -496,12 +555,6 @@ function love.run()
 						fileError(rbmfFile, "Invalid image encoding '%s'. (Valid values: png, tga)", v)
 					end
 					currentOutDescr.imageEncoding = v
-
-				elseif k == "alignForMipmapLevels" then
-					currentOutDescr.alignForMipmapLevels = fileAssert(rbmfFile, parseUint(v))
-					if currentOutDescr.alignForMipmapLevels < 1 then
-						fileError(rbmfFile, "There must be at least one level.")
-					end
 
 				elseif k:find"^custom%.[%a_][%w_]*$" then
 					k = k:sub(8)
@@ -659,19 +712,6 @@ function love.run()
 				rbmfFile.ln = outDescr.ln
 				fileWarning(rbmfFile, "No descriptor file specified for this output.")
 				rbmfFile.ln = 0
-			end
-
-			if outDescr.alignForMipmapLevels > 1 then
-				if outDescr.imagePaddingH+outDescr.imagePaddingH > 0 then
-					rbmfFile.ln = math.max(outDescr.paramLines.alignForMipmapLevels, outDescr.paramLines.imagePadding)
-					fileError(rbmfFile, "Cannot combine alignForMipmapLevels and imagePadding.")
-				end
-				if outDescr.glyphSpacingH+outDescr.glyphSpacingV > 0 then
-					rbmfFile.ln = math.max(outDescr.paramLines.alignForMipmapLevels, outDescr.paramLines.glyphSpacing)
-					fileError(rbmfFile, "Cannot combine alignForMipmapLevels and glyphSpacing.")
-				end
-
-				outDescr.mipmapAlignment = 2 ^ (outDescr.alignForMipmapLevels-1)
 			end
 		end
 	end--for rbmfFiles
@@ -848,6 +888,8 @@ function love.run()
 			mustConnectToDirectory(imagePathObj:getDirectory())
 			in_imageData = LI.newImageData(imagePathObj:getFilename())
 
+			-- do return debugViewImageData(in_imageData, true) end
+
 			if in_imageData:getWidth() < 2 or in_imageData:getHeight() < 2 then
 				errorLine("%s: Image is too small.", imagePathObj:getFilename())
 			end
@@ -989,6 +1031,8 @@ function love.run()
 			end
 		end
 
+		-- do return debugViewImageData(in_imageData, true) end
+
 		--
 		-- Trim glyphs
 		--
@@ -1029,17 +1073,13 @@ function love.run()
 
 			-- Determine glyphs sizes (for this output).
 			do
-				local glyphExtraSizeX = 2*outDescr.outlineWidth + (outDescr.glyphPaddingL+outDescr.glyphPaddingR) * outDescr.mipmapAlignment
-				local glyphExtraSizeY = 2*outDescr.outlineWidth + (outDescr.glyphPaddingU+outDescr.glyphPaddingD) * outDescr.mipmapAlignment
-
-				local alignment = outDescr.mipmapAlignment
-
-				local ceil = math.ceil
+				local glyphExtraSizeX = 2*outDescr.outlineWidth + outDescr.glyphPaddingL+outDescr.glyphPaddingR
+				local glyphExtraSizeY = 2*outDescr.outlineWidth + outDescr.glyphPaddingU+outDescr.glyphPaddingD
 
 				for _, glyphInfo in ipairs(glyphs) do
 					if glyphInfo.inW > 0 then
-						glyphInfo.outW = ceil((glyphInfo.inW + glyphExtraSizeX) / alignment) * alignment
-						glyphInfo.outH = ceil((glyphInfo.inH + glyphExtraSizeY) / alignment) * alignment
+						glyphInfo.outW = glyphInfo.inW + glyphExtraSizeX
+						glyphInfo.outH = glyphInfo.inH + glyphExtraSizeY
 					end
 				end
 			end
@@ -1119,8 +1159,8 @@ function love.run()
 
 			local out_imageDatas = {}
 
-			for imageIndex = 1, pageCount do
-				out_imageDatas[imageIndex] = LI.newImageData(pageWidth, pageHeight)
+			for page = 1, pageCount do
+				out_imageDatas[page] = LI.newImageData(pageWidth, pageHeight)
 			end
 
 			-- Start writing descriptor.
@@ -1132,7 +1172,7 @@ function love.run()
 				-- @Polish: We can do more here, but it's all probably useless!
 				'info face="" size=%d bold=0 italic=0 charset="" unicode=1 stretchH=100 smooth=0 aa=0 padding=%d,%d,%d,%d spacing=%d,%d outline=%d',
 				in_lineHeight, -- size
-				outDescr.glyphPaddingU*outDescr.mipmapAlignment, outDescr.glyphPaddingR*outDescr.mipmapAlignment, outDescr.glyphPaddingD*outDescr.mipmapAlignment, outDescr.glyphPaddingL*outDescr.mipmapAlignment, -- padding
+				outDescr.glyphPaddingU, outDescr.glyphPaddingR, outDescr.glyphPaddingD, outDescr.glyphPaddingL, -- padding
 				outDescr.glyphSpacingH, outDescr.glyphSpacingV, -- spacing
 				outDescr.outlineWidth -- outline
 			))
@@ -1145,7 +1185,7 @@ function love.run()
 
 			local out_lineHeight = (
 				in_lineHeight
-				+ (outDescr.paddingAffectsRenderSpacing and (outDescr.glyphPaddingU+outDescr.glyphPaddingD)*outDescr.mipmapAlignment or 0)
+				+ (outDescr.paddingAffectsRenderSpacing and outDescr.glyphPaddingU+outDescr.glyphPaddingD or 0)
 				+ (outDescr.outlineAffectsRenderSpacing and outDescr.outlineWidth or 0)
 			)
 
@@ -1159,8 +1199,8 @@ function love.run()
 			))
 
 			-- Write glyphs.
-			for imageIndex = 1, #out_imageDatas do
-				table.insert(out_descriptorBuffer, F('page id=%d file="%s"\n', imageIndex-1, outputImageFilenameBaseToFilename(outDescr.filenameImage, imageIndex)))
+			for page = 1, #out_imageDatas do
+				table.insert(out_descriptorBuffer, F('page id=%d file="%s"\n', page-1, outputImageFilenameBaseToFilename(outDescr.filenameImage, page)))
 			end
 
 			table.insert(out_descriptorBuffer, F('chars count=%d\n', #glyphs))
@@ -1170,13 +1210,13 @@ function love.run()
 			if outDescr.pack then
 				!GET_IMAGE_DATA_POINTER `in_imageData`
 
-				for imageIndex, out_imageData in ipairs(out_imageDatas) do
+				for page, out_imageData in ipairs(out_imageDatas) do
 					!GET_IMAGE_DATA_POINTER `out_imageData`
 
 					for _, glyphInfo in ipairs(glyphs) do
-						if glyphInfo.outPage == imageIndex and glyphInfo.outW > 0 then
-							local outX1 = glyphInfo.outX + outDescr.glyphPaddingL * outDescr.mipmapAlignment -- Note: Packed glyphs have no outlines.
-							local outY1 = glyphInfo.outY + outDescr.glyphPaddingU * outDescr.mipmapAlignment
+						if glyphInfo.outPage == page and glyphInfo.outW > 0 then
+							local outX1 = glyphInfo.outX + outDescr.glyphPaddingL -- Note: Packed glyphs have no outlines.
+							local outY1 = glyphInfo.outY + outDescr.glyphPaddingU
 							local outX2 = outX1 + glyphInfo.inW - 1
 							local outY2 = outY1 + glyphInfo.inH - 1
 
@@ -1214,15 +1254,15 @@ function love.run()
 							end
 						end
 					end
-				end
+				end--for out_imageDatas
 
 			else
 				for _, glyphInfo in ipairs(glyphs) do
 					if glyphInfo.outW > 0 then
 						out_imageDatas[glyphInfo.outPage]:paste(
 							in_imageData,
-							glyphInfo.outX + outDescr.glyphPaddingL * outDescr.mipmapAlignment + outDescr.outlineWidth, -- dx
-							glyphInfo.outY + outDescr.glyphPaddingU * outDescr.mipmapAlignment + outDescr.outlineWidth, -- dy
+							glyphInfo.outX + outDescr.glyphPaddingL + outDescr.outlineWidth, -- dx
+							glyphInfo.outY + outDescr.glyphPaddingU + outDescr.outlineWidth, -- dy
 							glyphInfo.inX1, -- sx
 							glyphInfo.inY1, -- sy
 							glyphInfo.inW,  -- sw
@@ -1230,6 +1270,8 @@ function love.run()
 						)
 					end
 				end
+
+				-- do return debugViewImageData(out_imageDatas[1], true) end
 
 				if outDescr.couldPack then
 					for _, out_imageData in ipairs(out_imageDatas) do
@@ -1255,13 +1297,15 @@ function love.run()
 				end
 			end
 
-			-- for _, data in ipairs(out_imageDatas) do  data:mapPixel(function(x,y, r,g,b,a)  return r, g, b, 1  end)  end -- DEBUG: Show as fully opaque / discard (glyphs in) alpha channel.
+			-- for _, data in ipairs(out_imageDatas) do  data:mapPixel(function(x,y, r,g,b,a)  return r,g,b,1  end)  end -- DEBUG: Show as fully opaque / discard (glyphs in) alpha channel.
+
+			-- do return debugViewImageData(out_imageDatas[1], false) end
 
 			for _, glyphInfo in ipairs(glyphs) do
 				local xAdvance = (
 					glyphInfo.inW0
 					+ outDescr.renderSpacing
-					+ (outDescr.paddingAffectsRenderSpacing and (outDescr.glyphPaddingL+outDescr.glyphPaddingR)*outDescr.mipmapAlignment or 0)
+					+ (outDescr.paddingAffectsRenderSpacing and outDescr.glyphPaddingL+outDescr.glyphPaddingR or 0)
 					+ (outDescr.outlineAffectsRenderSpacing and outDescr.outlineWidth or 0)
 				)
 				table.insert(out_descriptorBuffer, F(
@@ -1384,18 +1428,9 @@ function love.run()
 				end--for out_imageDatas
 			end--if outlineWidth > 0
 
-			--
 			-- Try to ensure linear interpolation will work properly when
 			-- rendering in-game. (Try, because LÖVE currently doesn't do the
 			-- right thing... Maybe someday it will! 2021-03-29)
-			--
-			-- If alignForMipmapLevels is 1 we only change pixels directly
-			-- around non-transparent pixels - otherwise we change all pixels.
-			-- Note that the algorithm currently doesn't consider glyph
-			-- bounds, which it probably should!
-			--
-			-- @Incomplete: Maybe there should be a setting to skip this step if it's not of importance.
-			--
 			if not outDescr.couldPack and outDescr.outlineWidth == 0 then
 				local w = pageWidth
 				local h = pageHeight
@@ -1403,11 +1438,26 @@ function love.run()
 				local min = math.min
 				local max = math.max
 
-				for _, out_imageData in ipairs(out_imageDatas) do
-					!GET_IMAGE_DATA_POINTER `out_imageData`
+				if outDescr.transparentColorFix == "none" then
+					-- Stomp transparent pixels.
+					for _, out_imageData in ipairs(out_imageDatas) do
+						!GET_IMAGE_DATA_POINTER `out_imageData`
 
-					if outDescr.alignForMipmapLevels > 1 then
-						local maxRadius = math.max(w, h) -- @Speed: Maybe we can use some lower value here?
+						!MAP_PIXEL(`out_imageData`, `x`,`y`)
+							!GET_PIXEL(`out_imageData`, `r`,`g`,`b`,`a`, `x`,`y`)
+							if a == 0 and r+g+b > 0 then
+								!SET_PIXEL(`out_imageData`, `x`,`y`, 0,0,0,0, true)
+							end
+						!MAP_PIXEL_END()
+					end
+
+					-- do return debugViewImageData(out_imageDatas[1], true) end
+
+				elseif outDescr.transparentColorFix == "full" then
+					local maxRadius = math.max(w, h) -- @Speed: Maybe we can use some lower value here?
+
+					for _, out_imageData in ipairs(out_imageDatas) do
+						!GET_IMAGE_DATA_POINTER `out_imageData`
 
 						!MAP_PIXEL(`out_imageData`, `x`,`y`)
 							-- Note: We don't need to use a readonlyImageData as we only write to transparent
@@ -1467,8 +1517,12 @@ function love.run()
 								end
 							end
 						!MAP_PIXEL_END()
+					end--for out_imageDatas
 
-					else--if outDescr.alignForMipmapLevels == 1 then
+				elseif outDescr.transparentColorFix == "border" then
+					for _, out_imageData in ipairs(out_imageDatas) do
+						!GET_IMAGE_DATA_POINTER `out_imageData`
+
 						!MAP_PIXEL(`out_imageData`, `x`,`y`)
 							-- Note: We don't need to use a readonlyImageData as we only write to transparent
 							-- pixels and we only read/use values from non-transparent pixels.
@@ -1522,12 +1576,15 @@ function love.run()
 								end
 							end
 						!MAP_PIXEL_END()
-					end
-				end--for out_imageDatas
+					end--for out_imageDatas
+
+				else
+					error(outDescr.transparentColorFix)
+				end
 			end
 
-			-- for _, data in ipairs(out_imageDatas) do  data:mapPixel(function(x,y, r,g,b,a)  return r, g, b, 1  end)  end -- DEBUG: Show as fully opaque.
-			-- for _, data in ipairs(out_imageDatas) do  data:mapPixel(function(x,y, r,g,b,a)  if a > 0 then  return r, g, b, 1  else  return (r+g+b)/3, 0, 0, 1  end  end)  end -- DEBUG: Show as fully opaque with red indicating transparency.
+			-- for _, data in ipairs(out_imageDatas) do  data:mapPixel(function(x,y, r,g,b,a)  return r,g,b,1  end)  end -- DEBUG: Show as fully opaque.
+			-- for _, data in ipairs(out_imageDatas) do  data:mapPixel(function(x,y, r,g,b,a)  if a > 0 then  return r,g,b,1  else  return (r+g+b)/3,0,1,1  end  end)  end -- DEBUG: Show as opaque with red/blue indicating transparency.
 
 			-- Write kernings.
 			local kerningPairs = {}
@@ -1557,8 +1614,8 @@ function love.run()
 				local pathObj           = Path(outDescr.filenameImage, rbmfFile.outDirectory)
 				local dir, filenameBase = pathObj:getDirectoryAndFilename()
 
-				for imageIndex, out_imageData in ipairs(out_imageDatas) do
-					local filename = outputImageFilenameBaseToFilename(filenameBase, imageIndex)
+				for page, out_imageData in ipairs(out_imageDatas) do
+					local filename = outputImageFilenameBaseToFilename(filenameBase, page)
 					pathObj:setFilename(filename)
 
 					printf("Writing image: %s", pathObj:toString())
@@ -1572,8 +1629,8 @@ function love.run()
 
 				-- Delete old extra pages.
 				-- @Robustness: Delete pages in reverse order in case there's an error to prevent leaving accidental garbage files.
-				for imageIndex = #out_imageDatas+1, 2^52 do
-					local filename = outputImageFilenameBaseToFilename(filenameBase, imageIndex)
+				for page = #out_imageDatas+1, 2^52 do
+					local filename = outputImageFilenameBaseToFilename(filenameBase, page)
 					pathObj:setFilename(filename)
 
 					if not LF.getInfo(filename, "file") then  break  end
