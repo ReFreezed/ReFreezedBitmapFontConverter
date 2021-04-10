@@ -5,7 +5,6 @@ colored=false
 fontFile=IcicleCountryTwo.otf
 fontSize=24
 # fontHinting=mono
-# textFile=vector.rbmf
 
 # [edit]
 # alphaThreshold=.5

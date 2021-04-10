@@ -1,5 +1,17 @@
 Changelog
 ReFreezed Bitmap Font converter
 
+v1.1 (2021-04-10)
+- Outputted glyphs are packed a lot better.
+- Added [edit] parameter 'trim' for controlling trimming of transparent pixels around glyphs.
+- Added [out] parameter 'imageBounds' for controlling the dimensions of outputted images (e.g. power-of-two).
+- Added [out] parameter 'imageEncoding' for outputting other encodings than PNG.
+- Added [out] parameter 'glyphColor'.
+- Added [out] parameter 'glyphAlignment' (may be relevant for mipmaps).
+- Added [out] parameter 'transparentColorFix' for controlling the RGB values of transparent pixels.
+- Added --missing option for outputting missing characters to a file.
+- paddingAffectsRenderSpacing and outlineAffectsRenderSpacing affect outputted line height value.
+- Color parameters have more formats.
+
 v1.0 (2021-03-31)
 - Initial release!
