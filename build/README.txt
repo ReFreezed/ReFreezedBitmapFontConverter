@@ -88,6 +88,10 @@ Options:
     (This is like the opposite of --textfile.) (Default: All characters are
     included)
 
+    --silent
+    Disable output to stdout. (Errors and warnings are still printed to
+    stderr.)
+
 
 4. Font image
 ==============================================================================
@@ -119,6 +123,10 @@ File structure:
 
     # The [in] section contains some general information about the input image.
     [in]
+
+    # Filename of the input image, e.g. "<name>.png" (<name> will be replaced
+    # by the descriptor's filename). (Default: <name>.png)
+    imageFile=filename
 
     # Specify whether the image is colored or monochrome. Monochrome images
     # may become more optimized. Possible values are 'true' or 'false'.
@@ -359,11 +367,12 @@ File structure, in addition to the above:
 
     [in]
 
-    # Filename of the font. Note that a relative path is relative to the .rbmf file.
-    fontFile=OpenSans-Regular.ttf
+    # Filename of the font. Replaces the imageFile parameter. Note that a
+    # relative path is relative to the .rbmf file. Required parameter!
+    fontFile=filename
 
-    # The size of the font.
-    fontSize=24
+    # The size of the font. Required parameter!
+    fontSize=size
 
     # TrueType hinting mode (for anti-aliasing). Possible values are 'normal',
     # 'light', 'none' or 'mono'. 'mono' disables anti-aliasing while the

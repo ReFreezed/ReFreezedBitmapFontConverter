@@ -21,7 +21,7 @@ local CMD_HELP = [=[
 		--mergemissing          # Merge missing characters with existing characters if the missing file exists. (Default: File is replaced)
 		--textfile <filePath1> [--textfile <filePath2> ...]  # Files containing characters to rasterize when using vector fonts.
 		--filter   <filePath1> [--filter   <filePath2> ...]  # Files containing characters that should be included in outputted fonts. (Default: All characters are included)
-		--silent                # Prevent output to stdout. (Errors and warnings are still printed to stderr.)
+		--silent                # Disable output to stdout. (Errors and warnings are still printed to stderr.)
 
 	Notes:
 		* <inputPath> can be a .rbmf file or a directory with .rbmf files.
@@ -48,6 +48,8 @@ local function RbmfFile()
 		icons      = {--[[ iconName1,        ... ]]},
 
 		isColored = true, -- Uncolored fonts can be optimized so the 4 channels contain different glyphs in the output.
+
+		imageFilename = "", -- Empty means "<name>.png", unless a TrueType font is used.
 
 		fontFilename = "",
 		fontSize     = 0,
@@ -388,6 +390,7 @@ function love.run()
 		local sectionLines    = {}
 		local currentOutDescr = nil
 		local paramLines      = {}
+		local inParamLines    = {}
 
 		for ln, line in eachLine(rbmfFile.path) do
 			rbmfFile.ln = ln
@@ -427,6 +430,11 @@ function love.run()
 					currentOutDescr.ln = ln
 					paramLines         = currentOutDescr.paramLines
 					table.insert(rbmfFile.outputDescriptors, currentOutDescr)
+
+				elseif section == "in" then
+					currentOutDescr    = nil
+					paramLines         = inParamLines
+
 				else
 					currentOutDescr    = nil
 					paramLines         = {}
@@ -442,6 +450,8 @@ function love.run()
 			----------------------------------------------------------------
 
 			elseif section == "in" then
+				-- Note: Input parameter paths are relative to inputPath, unlike paths from arguments.
+
 				if paramLines[k] and not (k == "textFile" or k == "filterFile") then
 					fileError(rbmfFile, "Duplicate parameter '%s'. (Previous is on line %d)", k, paramLines[k])
 				end
@@ -470,8 +480,13 @@ function love.run()
 					if k == "colored" then
 						rbmfFile.isColored = fileAssert(rbmfFile, parseBool(v))
 
+					elseif k == "imageFile" then
+						local path             = normalizePath(v ~= "" and v or fileError(rbmfFile, "Path cannot be empty."))
+						rbmfFile.imageFilename = processPathTemplate(rbmfFile, path)
+
 					elseif k == "fontFile" then
-						rbmfFile.fontFilename = (v ~= "" and v or fileError(rbmfFile, "TrueType font path cannot be empty."))
+						local path            = normalizePath(v ~= "" and v or fileError(rbmfFile, "Path cannot be empty."))
+						rbmfFile.fontFilename = processPathTemplate(rbmfFile, path)
 					elseif k == "fontSize" then
 						rbmfFile.fontSize = fileAssert(rbmfFile, parseUint(v))
 						if rbmfFile.fontSize < 1 then
@@ -484,15 +499,13 @@ function love.run()
 						end
 
 					elseif k == "textFile" then
-						-- Note: Paths are relative to inputPath, unlike the --textfile argument.
-						local path = (v ~= "" and v or fileError(rbmfFile, "Path cannot be empty."))
-						table.insert(rbmfFile.textFilePaths, path)
+						local path = normalizePath(v ~= "" and v or fileError(rbmfFile, "Path cannot be empty."))
+						table.insert(rbmfFile.textFilePaths, processPathTemplate(rbmfFile, path))
 						rbmfFile.useTextFiles = true
 
 					elseif k == "filterFile" then
-						-- Note: Paths are relative to inputPath, unlike the --filter argument.
-						local path = (v ~= "" and v or fileError(rbmfFile, "Path cannot be empty."))
-						table.insert(rbmfFile.filterFilePaths, path)
+						local path = normalizePath(v ~= "" and v or fileError(rbmfFile, "Path cannot be empty."))
+						table.insert(rbmfFile.filterFilePaths, processPathTemplate(rbmfFile, path))
 						rbmfFile.useFilter = true
 
 					else
@@ -720,15 +733,22 @@ function love.run()
 		end--for eachLine(rbmfFile.path)
 		rbmfFile.ln = 0
 
-		-- Validate and set final values.
-		if not rbmfFile.outputDescriptors[1] then
-			fileWarning(rbmfFile, "No outputs specified.")
+		--
+		-- Validate and set final values
+		--
+		if rbmfFile.imageFilename ~= "" and rbmfFile.fontFilename ~= "" then
+			rbmfFile.ln = math.max(inParamLines.imageFile, inParamLines.fontFile)
+			fileError(rbmfFile, "Cannot specify both an image path and TrueType font path as input.")
+		end
+		if rbmfFile.imageFilename == "" and rbmfFile.fontFilename == "" then
+			rbmfFile.imageFilename = processPathTemplate(rbmfFile, "<name>.png")
 		end
 
 		if rbmfFile.fontFilename ~= "" and rbmfFile.fontSize == 0 then
+			rbmfFile.ln = inParamLines.fontFile
 			fileError(rbmfFile, "A TrueType font was specified, but no font size.")
-		end
-		if rbmfFile.fontSize > 0 and rbmfFile.fontFilename == "" then
+		elseif rbmfFile.fontSize > 0 and rbmfFile.fontFilename == "" then
+			rbmfFile.ln = inParamLines.fontSize
 			fileError(rbmfFile, "A font size was specified, but no TrueType font.")
 		end
 
@@ -743,10 +763,14 @@ function love.run()
 			end
 		end
 		if not rbmfFile.useTextFiles and rbmfFile.lastRow == 0 then
-			fileError(rbmfFile, "No glyphs specified or imported from text files.")
+			fileError(rbmfFile, "No glyphs specified.")
 		end
 
 		rbmfFile.outDirectory = (out_directory ~= "" and out_directory or Path(rbmfFile.path):getDirectory())
+
+		if not rbmfFile.outputDescriptors[1] then
+			fileWarning(rbmfFile, "No outputs specified.")
+		end
 
 		for _, outDescr in ipairs(rbmfFile.outputDescriptors) do
 			if outDescr.filenameImage ~= "" then
@@ -952,15 +976,16 @@ function love.run()
 		----------------------------------------------------------------
 
 		else--if rbmfFile.fontFilename == "" then
-			local imagePathObj = Path(rbmfFile.path)
-			local pathSegments = imagePathObj.path
-			imagePathObj:setFilename(getLast(imagePathObj.path):gsub("%.%w+$", "")..".png")
+			local imagePathObj = Path(rbmfFile.imageFilename, Path("..", rbmfFile.path))
 
 			printf("Loading image: %s", imagePathObj:toString())
 			reservePathForReading(imagePathObj:toString(), "input image for '%s'", rbmfFile.path)
 
 			mustConnectToDirectory(imagePathObj:getDirectory())
-			in_imageData = LI.newImageData(imagePathObj:getFilename())
+			local ok;ok, in_imageData = pcall(LI.newImageData, imagePathObj:getFilename())
+			if not ok then
+				errorLine("Could not load image '%s'. (%s)", imagePathObj:toString(), in_imageData)
+			end
 
 			-- do return debugViewImageData(in_imageData, true) end
 
