@@ -20,11 +20,12 @@ local CMD_HELP = [=[
 		--missing  <filePath>   # File to write characters that are missing from at least one font. (Default: No file is written)
 		--mergemissing          # Merge missing characters with existing characters if the missing file exists. (Default: File is replaced)
 		--textfile <filePath1> [--textfile <filePath2> ...]  # Files containing characters to rasterize when using vector fonts.
+		--filter   <filePath1> [--filter   <filePath2> ...]  # Files containing characters that should be included in outputted fonts. (Default: All characters are included)
 
 	Notes:
-		<inputPath> can be a .rbmf file or a directory with .rbmf files.
-		The filenames of outputted files is specified in the font descriptor.
-		Relative --textfile paths will be relative to CWD, unlike the 'textFile' input parameter in the descriptor.
+		* <inputPath> can be a .rbmf file or a directory with .rbmf files.
+		* The filenames for outputted files is specified in the font descriptor.
+		* Relative --textfile and --filter paths will be relative to CWD, unlike the respective input parameters in the descriptor.
 ]=]
 
 !local CMD_TITLE     = "ReFreezed Bitmap Font converter "..getReleaseVersion()
@@ -51,7 +52,8 @@ local function RbmfFile()
 		fontSize     = 0,
 		fontHinting  = "normal", -- "normal"|"light"|"mono"|"none"
 
-		textFilePaths = {--[[ path1, ... ]]},
+		textFilePaths   = {--[[ path1, ... ]]},
+		filterFilePaths = {--[[ path1, ... ]]},
 
 		editAlphaThreshold = 0, -- 0 means we don't do this edit.
 		editTrimGlyphs     = true,
@@ -61,6 +63,8 @@ local function RbmfFile()
 		kernings = {--[[ [pair1]=offset1, ... ]]},
 		--
 
+		outDirectory = "",
+
 		codepointLines = {--[[ [cp1]=ln1,   ... ]]}, -- For dupe checking.
 		kerningLines   = {--[[ [pair1]=ln1, ... ]]}, -- For dupe checking.
 		lastRow        = 0,
@@ -68,7 +72,8 @@ local function RbmfFile()
 		useTextFiles   = false,
 		textCodepoints = {--[[ [cp1]=true, ... ]]},
 
-		outDirectory = "",
+		useFilter        = false,
+		filterCodepoints = {--[[ [cp1]=true, ... ]]},
 
 		missingCodepoints = {--[[ cp1, ... ]]},
 	}
@@ -230,14 +235,15 @@ function love.run()
 	-- Get args
 	--
 
-	local in_paths           = {}
-	local in_textFilesForAll = {}
-	local out_directory      = ""
-	local out_imageMaxSize   = 2048
-	local out_iconsPath      = ""
-	local out_mergeIcons     = false
-	local out_missingPath    = ""
-	local out_mergeMissing   = false
+	local in_paths             = {}
+	local in_textFilesForAll   = {}
+	local in_filterFilesForAll = {}
+	local out_directory        = ""
+	local out_imageMaxSize     = 2048
+	local out_iconsPath        = ""
+	local out_mergeIcons       = false
+	local out_missingPath      = ""
+	local out_mergeMissing     = false
 
 	local args = love.arg.parseGameArguments(programArguments)
 	local i    = 1
@@ -289,6 +295,11 @@ function love.run()
 		elseif args[i] == "--textfile" then
 			local path = args[i+1] or errorLine("Argument: Missing path after '%s'.", args[i])
 			table.insert(in_textFilesForAll, normalizePath(path))
+			i = i+2
+
+		elseif args[i] == "--filter" then
+			local path = args[i+1] or errorLine("Argument: Missing path after '%s'.", args[i])
+			table.insert(in_filterFilesForAll, normalizePath(path))
 			i = i+2
 
 		elseif args[i] == "--nogc" then
@@ -373,7 +384,12 @@ function love.run()
 
 		for ln, line in eachLine(rbmfFile.path) do
 			rbmfFile.ln = ln
-			local k, v  = line:match"^([%a][%w_.]+)=(.*)$"
+
+			if not utf8.len(line) then
+				fileError(rbmfFile, "The line does not contain valid UTF-8-encoded text.")
+			end
+
+			local k, v = line:match"^([%a][%w_.]+)=(.*)$"
 
 			-- Empty/comment.
 			if line == "" or line:find"^#" then
@@ -419,36 +435,62 @@ function love.run()
 			----------------------------------------------------------------
 
 			elseif section == "in" then
-				if paramLines[k] and not (k == "textFile") then
+				if paramLines[k] and not (k == "textFile" or k == "filterFile") then
 					fileError(rbmfFile, "Duplicate parameter '%s'. (Previous is on line %d)", k, paramLines[k])
 				end
 				paramLines[k] = ln
 
-				v = trim(v)
-
-				if k == "colored" then
-					rbmfFile.isColored = fileAssert(rbmfFile, parseBool(v))
-
-				elseif k == "fontFile" then
-					rbmfFile.fontFilename = (v ~= "" and v or fileError(rbmfFile, "TrueType font path cannot be empty."))
-				elseif k == "fontSize" then
-					rbmfFile.fontSize = fileAssert(rbmfFile, parseUint(v))
-					if rbmfFile.fontSize < 1 then
-						fileError(rbmfFile, "TrueType font size must be positive. (Value is '%s')", v)
-					end
-				elseif k == "fontHinting" then
-					rbmfFile.fontHinting = v
-					if not (v == "normal" or v == "light" or v == "mono" or v == "none") then
-						fileError(rbmfFile, "Invalid TrueType font hinting '%s'. (Valid values: normal, light, mono, none)", v)
+				if k == "filter" then
+					if v == "" then
+						fileError(rbmfFile, "Missing characters.")
 					end
 
-				elseif k == "textFile" then
-					-- Note: Paths are relative to inputPath, unlike the --textfile argument.
-					local path = (v ~= "" and v or fileError(rbmfFile, "Path cannot be empty."))
-					table.insert(rbmfFile.textFilePaths, path)
+					rbmfFile.useFilter     = true
+					local cpsFromThisParam = {}
+
+					for _, cp in utf8.codes(v) do
+						if cpsFromThisParam[cp] then
+							fileError(rbmfFile, "Character '%s' (codepoint %d) appears multiple times on the line.", utf8.char(cp), cp)
+						end
+
+						cpsFromThisParam[cp]          = true
+						rbmfFile.filterCodepoints[cp] = true
+					end
 
 				else
-					fileError(rbmfFile, "Unknown [%s] key '%s'.", section, k)
+					v = trim(v)
+
+					if k == "colored" then
+						rbmfFile.isColored = fileAssert(rbmfFile, parseBool(v))
+
+					elseif k == "fontFile" then
+						rbmfFile.fontFilename = (v ~= "" and v or fileError(rbmfFile, "TrueType font path cannot be empty."))
+					elseif k == "fontSize" then
+						rbmfFile.fontSize = fileAssert(rbmfFile, parseUint(v))
+						if rbmfFile.fontSize < 1 then
+							fileError(rbmfFile, "TrueType font size must be positive. (Value is '%s')", v)
+						end
+					elseif k == "fontHinting" then
+						rbmfFile.fontHinting = v
+						if not (v == "normal" or v == "light" or v == "mono" or v == "none") then
+							fileError(rbmfFile, "Invalid TrueType font hinting '%s'. (Valid values: normal, light, mono, none)", v)
+						end
+
+					elseif k == "textFile" then
+						-- Note: Paths are relative to inputPath, unlike the --textfile argument.
+						local path = (v ~= "" and v or fileError(rbmfFile, "Path cannot be empty."))
+						table.insert(rbmfFile.textFilePaths, path)
+						rbmfFile.useTextFiles = true
+
+					elseif k == "filterFile" then
+						-- Note: Paths are relative to inputPath, unlike the --filter argument.
+						local path = (v ~= "" and v or fileError(rbmfFile, "Path cannot be empty."))
+						table.insert(rbmfFile.filterFilePaths, path)
+						rbmfFile.useFilter = true
+
+					else
+						fileError(rbmfFile, "Unknown [%s] key '%s'.", section, k)
+					end
 				end
 
 			----------------------------------------------------------------
@@ -683,7 +725,9 @@ function love.run()
 			fileError(rbmfFile, "A font size was specified, but no TrueType font.")
 		end
 
-		rbmfFile.useTextFiles = (in_textFilesForAll[1] or rbmfFile.textFilePaths[1]) ~= nil
+		rbmfFile.useTextFiles = rbmfFile.useTextFiles or in_textFilesForAll  [1] ~= nil
+		rbmfFile.useFilter    = rbmfFile.useFilter    or in_filterFilesForAll[1] ~= nil
+
 		if rbmfFile.useTextFiles and rbmfFile.fontFilename == "" then
 			if in_textFilesForAll[1] then
 				fileError(rbmfFile, "%d text files were specified (including arguments), but no TrueType font.", #rbmfFile.textFilePaths + #in_textFilesForAll)
@@ -717,14 +761,17 @@ function love.run()
 	end--for rbmfFiles
 
 	--
-	-- Load glyph filter text files
+	-- Load character text files
 	--
-	local function processTextFile(pathObj, textCpSet)
+	local function loadCodepointsFromTextFile(pathObj, textCpSet)
+		-- @Speed: Don't load the same text file twice. (The user might e.g. use the same file as --textfile and --filter.)
 		printf("Loading text file: %s", pathObj:toString())
 
 		local s, err = getFileContents(pathObj)
 		if not s then
 			errorLine("Could not open text file '%s'. (%s)", pathObj:toString(), err)
+		elseif not utf8.len(s) then
+			errorLine("'%s' does not contain valid UTF-8-encoded text.", pathObj:toString())
 		end
 
 		for _, cp in utf8.codes(s) do
@@ -732,9 +779,14 @@ function love.run()
 		end
 	end
 
-	local textCodepointsForAll = {}
+	local textCodepointsForAll   = {}
+	local filterCodepointsForAll = {}
+
 	for _, path in ipairs(in_textFilesForAll) do
-		processTextFile(Path(path), textCodepointsForAll)
+		loadCodepointsFromTextFile(Path(path), textCodepointsForAll)
+	end
+	for _, path in ipairs(in_filterFilesForAll) do
+		loadCodepointsFromTextFile(Path(path), filterCodepointsForAll)
 	end
 
 	for _, rbmfFile in ipairs(rbmfFiles) do
@@ -743,7 +795,16 @@ function love.run()
 				rbmfFile.textCodepoints[cp] = true
 			end
 			for _, path in ipairs(rbmfFile.textFilePaths) do
-				processTextFile(Path(path, Path("..", rbmfFile.path)), rbmfFile.textCodepoints)
+				loadCodepointsFromTextFile(Path(path, Path("..", rbmfFile.path)), rbmfFile.textCodepoints)
+			end
+		end
+
+		if rbmfFile.useFilter then
+			for cp in pairs(filterCodepointsForAll) do
+				rbmfFile.filterCodepoints[cp] = true
+			end
+			for _, path in ipairs(rbmfFile.filterFilePaths) do
+				loadCodepointsFromTextFile(Path(path, Path("..", rbmfFile.path)), rbmfFile.filterCodepoints)
 			end
 		end
 	end
@@ -789,8 +850,12 @@ function love.run()
 			in_lineDist   = in_lineHeight + 1
 
 			-- Collect all glyphs. Note that we set the coords later.
+			local filterCps = (rbmfFile.useFilter and rbmfFile.filterCodepoints or nil)
+
 			for cp in pairs(rbmfFile.textCodepoints) do -- Note: textCodepoints should be empty if useTextFiles is unset.
-				if font:hasGlyphs(cp) then
+				if filterCps and not filterCps[cp] then
+					-- void
+				elseif font:hasGlyphs(cp) then
 					table.insert(glyphs, GlyphInfo(cp))
 				else
 					table.insert(rbmfFile.missingCodepoints, cp)
@@ -800,6 +865,8 @@ function love.run()
 			for row, cpsOnRow in pairs(rbmfFile.codepoints) do
 				for _, cp in ipairs(cpsOnRow) do
 					if rbmfFile.textCodepoints[cp] then
+						-- void
+					elseif filterCps and not filterCps[cp] then
 						-- void
 					elseif font:hasGlyphs(cp) then
 						table.insert(glyphs, GlyphInfo(cp))
@@ -942,13 +1009,14 @@ function love.run()
 				)
 			end
 
-			-- Collect all glyphs.
+			--
+			-- Collect all glyphs
 			--
 			-- Note: The output should be stable even if we process rows out-of-order
 			-- here because we sort the glyphs before determining layout and nothing
 			-- else should be affected by the processing order. 2021-04-07
 			--
-			local filterCps      = (rbmfFile.useTextFiles and rbmfFile.textCodepoints or nil)
+			local filterCps      = (rbmfFile.useFilter and rbmfFile.filterCodepoints or nil)
 			local existingGlyphs = {}
 
 			for row, cpsOnRow in pairs(rbmfFile.codepoints) do
@@ -996,8 +1064,7 @@ function love.run()
 			end
 
 			-- Check for missing glyphs.
-			-- @Incomplete: This doesn't do anything until we got character filters or something implemented. (When we do, don't use textCodepoints!) 2021-04-08
-			for cp in pairs(rbmfFile.textCodepoints) do
+			for cp in pairs(rbmfFile.filterCodepoints) do
 				if not existingGlyphs[cp] then
 					table.insert(rbmfFile.missingCodepoints, cp)
 				end
@@ -1714,6 +1781,8 @@ function love.run()
 			local s, err = getFileContents(pathObj)
 			if not s then
 				errorLine("Could not open missing characters file '%s'. (%s)", pathObj:toString(), err)
+			elseif not utf8.len(s) then
+				errorLine("'%s' does not contain valid UTF-8-encoded text.", pathObj:toString())
 			end
 
 			for _, cp in utf8.codes(s) do

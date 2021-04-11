@@ -57,7 +57,7 @@ The filenames of outputted files is specified in each font descriptor.
 Options:
 
     --outdir <directory>
-    Where to output files. (Default: Same directory as the input.)
+    Where to output files. (Default: Same directory as the input)
 
     --maxsize <size>
     Maximum width and height of outputted images in pixels. (Default: 2048)
@@ -72,16 +72,21 @@ Options:
 
     --missing <filePath>
     File to write characters that are missing from at least one input font.
-    (Default: No file is written.)
+    (Default: No file is written)
 
     --mergemissing
     Merge missing characters with existing characters if the missing file
-    already exists. (Default: File is replaced.)
+    already exists. (Default: File is replaced)
 
     --textfile <filePath1> [--textfile <filePath2> ...]
     Files containing characters to rasterize when using vector fonts.
     Note: Relative paths will be relative to the current working directory,
     unlike the 'textFile' input parameter in the descriptor.
+
+    --filter <filePath>
+    File containing characters that should be included in outputted fonts.
+    (This is like the opposite of --textfile.) (Default: All characters are
+    included)
 
 
 4. Font image
@@ -119,6 +124,17 @@ File structure:
     # may become more optimized. Possible values are 'true' or 'false'.
     # (Default: true)
     colored=bool
+
+    # Characters that should be included in outputted fonts. (Default: All
+    # characters are included)
+    filter=characters
+
+    # Filename of a text file containing characters that should be included in
+    # outputted fonts. There can be multiple 'filterFile' parameters. Note
+    # that relative paths are relative to the .rbmf file. (Default: All
+    # characters are included)
+    filterFile=filename1
+    filterFile=filename2
 
 
     # The [edit] section describes how the input image should be preprocessed
