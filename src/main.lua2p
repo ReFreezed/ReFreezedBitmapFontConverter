@@ -21,6 +21,7 @@ local CMD_HELP = [=[
 		--mergemissing          # Merge missing characters with existing characters if the missing file exists. (Default: File is replaced)
 		--textfile <filePath1> [--textfile <filePath2> ...]  # Files containing characters to rasterize when using vector fonts.
 		--filter   <filePath1> [--filter   <filePath2> ...]  # Files containing characters that should be included in outputted fonts. (Default: All characters are included)
+		--silent                # Prevent output to stdout. (Errors and warnings are still printed to stderr.)
 
 	Notes:
 		* <inputPath> can be a .rbmf file or a directory with .rbmf files.
@@ -226,6 +227,7 @@ function love.run()
 	_G.LF = love.filesystem
 	_G.LI = love.image
 
+	_G.silent       = false
 	_G.warningCount = 0
 
 	io.stdout:setvbuf"no"
@@ -252,6 +254,7 @@ function love.run()
 
 	while args[i] do
 		if args[i] == "--help" or args[i] == "-help" or args[i] == "-?" or args[i]:find"^/[Hh][Ee][Ll][Pp]$" or args[i] == "/?" then
+			_G.silent = false
 			print!(CMD_TITLE)
 			print()
 			print((CMD_HELP:gsub("\t", "    ")))
@@ -301,6 +304,10 @@ function love.run()
 			local path = args[i+1] or errorLine("Argument: Missing path after '%s'.", args[i])
 			table.insert(in_filterFilesForAll, normalizePath(path))
 			i = i+2
+
+		elseif args[i] == "--silent" then
+			_G.silent = true
+			i = i+1
 
 		elseif args[i] == "--nogc" then
 			collectgarbage("stop")

@@ -507,23 +507,17 @@ end
 
 
 do
-	local _print     = print
-	-- local logFile = nil
+	local _print = print
 
 	function _G.print(...)
+		if silent then  return  end
 		_print(...)
-
-		-- logFile = logFile or LF.newFile("log.txt", "a")
-		-- for i = 1, select("#", ...) do
-		-- 	if i > 1 then  logFile:write("\t")  end
-		-- 	logFile:write((tostring(select(i, ...)):gsub("\r?\n", "\r\n")))
-		-- end
-		-- logFile:write("\r\n")
 	end
-end
 
-function _G.printf(s, ...)
-	print(F(s, ...))
+	function _G.printf(s, ...)
+		if silent then  return  end
+		_print(F(s, ...))
+	end
 end
 
 
