@@ -370,7 +370,8 @@ File structure, in addition to the above:
     [in]
 
     # Filename of the font. Replaces the imageFile parameter. Note that a
-    # relative path is relative to the .rbmf file. Required parameter!
+    # relative path is relative to the .rbmf file. A value of "builtin" uses
+    # the built-in font. Required parameter!
     fontFile=filename
 
     # The size of the font. Required parameter!

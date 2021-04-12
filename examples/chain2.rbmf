@@ -1,0 +1,12 @@
+version=1
+
+[in]
+fontFile=builtin
+fontSize=12
+fontHinting=mono
+colored=false
+
+[out]
+fileImage=<name>.png
+fileDescriptor=<name>.fnt
+glyphPadding=1

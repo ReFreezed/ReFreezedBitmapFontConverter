@@ -316,7 +316,7 @@ end
 
 
 function _G.getUnicodeBlockName(cp)
-	for _, block in ipairs(require"unicodeBlocks") do
+	for _, block in ipairs(unicodeBlocks) do
 		if cp >= block.from and cp <= block.to then
 			return block.name
 		end

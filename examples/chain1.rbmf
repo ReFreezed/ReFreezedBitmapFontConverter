@@ -1,0 +1,18 @@
+version=1
+
+[in]
+imageFile=smallPixel.png
+colored=true
+
+[out]
+fileImage=<name>.png
+fileDescriptor=<name>.fnt
+glyphPadding=1
+
+[1]
+glyphs=ABCDEFGHIJKLMNOPQRSTUVWXYZ
+[2]
+glyphs=abcdefghijklmnopqrstuvwxyz
+[3]
+glyphs=0123456789
+glyphs= !"#$%&'()*+,-./:;<=>?@[\]^_`{|}~

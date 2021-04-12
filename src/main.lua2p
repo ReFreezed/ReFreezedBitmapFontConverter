@@ -229,6 +229,8 @@ function love.run()
 	_G.LF = love.filesystem
 	_G.LI = love.image
 
+	_G.unicodeBlocks = require"unicodeBlocks"
+
 	_G.silent       = false
 	_G.warningCount = 0
 
@@ -867,15 +869,21 @@ function love.run()
 			end
 
 			local LG = love.graphics
+			local font
 
-			local pathObj = Path("..", rbmfFile.path)
-			pathObj:append(rbmfFile.fontFilename)
+			if rbmfFile.fontFilename == "builtin" then
+				font = LG.newFont(rbmfFile.fontSize, rbmfFile.fontHinting)
 
-			printf("Loading vector font: %s", pathObj:toString())
-			reservePathForReading(pathObj:toString(), "input font for '%s'", rbmfFile.path)
+			else
+				local pathObj = Path("..", rbmfFile.path)
+				pathObj:append(rbmfFile.fontFilename)
 
-			mustConnectToDirectory(pathObj:getDirectory())
-			local font = LG.newFont(pathObj:getFilename(), rbmfFile.fontSize, rbmfFile.fontHinting)
+				printf("Loading vector font: %s", pathObj:toString())
+				reservePathForReading(pathObj:toString(), "input font for '%s'", rbmfFile.path)
+
+				mustConnectToDirectory(pathObj:getDirectory())
+				font = LG.newFont(pathObj:getFilename(), rbmfFile.fontSize, rbmfFile.fontHinting)
+			end
 
 			in_lineHeight = font:getHeight()
 			in_lineDist   = in_lineHeight + 1

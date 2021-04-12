@@ -4,6 +4,7 @@ local/
 /*.lua
 /*.sublime-*
 /.run
+/examples/output
 /output/
 /srcgen/
 /temp/

@@ -3,11 +3,7 @@ version=1
 [in]
 fontFile=IcicleCountryTwo.otf
 fontSize=24
-# fontHinting=mono
 colored=false
-
-# [edit]
-# alphaThreshold=.5
 
 [out]
 fileImage=<name>.png
