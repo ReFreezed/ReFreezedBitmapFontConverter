@@ -9,7 +9,8 @@ Website: https://github.com/ReFreezed/ReFreezedBitmapFontConverter
 4. Font image
 5. Font descriptor
 6. Icons
-7. Notes
+7. Path variables
+8. Notes
 
 
 
@@ -124,8 +125,7 @@ File structure:
     # The [in] section contains some general information about the input image.
     [in]
 
-    # Filename of the input image, e.g. "<name>.png" (<name> will be replaced
-    # by the descriptor's filename). (Default: <name>.png)
+    # Filename of the input image. (See path variables.) (Default: <name>.png)
     imageFile=filename
 
     # Specify whether the image is colored or monochrome. Monochrome images
@@ -167,12 +167,14 @@ File structure:
     # anything!
     [out]
 
-    # Filename of the outputted image, e.g. "<name>.png" (<name> will be
-    # replaced by the descriptor's filename). Required parameter!
+    # Filename of the outputted image, e.g. "<name>.png". Note that multiple
+    # images may be outputted for each BMFont, so a sequence number is
+    # automatically added to the end of the filename (e.g. the filename
+    # "coolFont.png" produces "coolFont_0.png", "coolFont_1.png" etc.).
+    # Required parameter!
     fileImage=filename
 
-    # Filename of the outputted BMFont descriptor, e.g. "<name>.fnt" (<name>
-    # will be replaced by the .rbmf descriptor's filename). Required
+    # Filename of the outputted BMFont descriptor, e.g. "<name>.fnt". Required
     # parameter!
     fileDescriptor=filename
 
@@ -428,7 +430,19 @@ this:
 
 
 
-7. Notes
+7. Path variables
+==============================================================================
+
+Paths can contain variables in the form of <variableName>. There is currently
+only one variable.
+
+    <name>
+    Replaced with the name of the input descriptor file (e.g. if the
+    descriptor is called "coolFont.rbmf" then <name> becomes "coolFont").
+
+
+
+8. Notes
 ==============================================================================
 
 Mipmapping:
