@@ -434,8 +434,8 @@ this:
 7. Path variables
 ==============================================================================
 
-Paths can contain variables in the form of <variableName>. There is currently
-only one variable.
+Most file paths can contain variables in the form of <variableName>. There is
+currently only one variable.
 
     <name>
     Replaced with the name of the input descriptor file (e.g. if the

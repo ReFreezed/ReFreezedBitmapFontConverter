@@ -26,7 +26,7 @@ local CMD_HELP = [=[
 	Notes:
 		* <inputPath> can be a .rbmf file or a directory with .rbmf files.
 		* The filenames for outputted files is specified in the font descriptor.
-		* Relative --textfile and --filter paths will be relative to CWD, unlike the respective input parameters in the descriptor.
+		* Relative --textfile and --filter paths are relative to CWD, unlike the respective input parameters in the descriptor.
 ]=]
 
 !local CMD_TITLE     = "ReFreezed Bitmap Font converter "..getReleaseVersion()
@@ -1410,10 +1410,12 @@ function love.run()
 
 			for _, glyphInfo in ipairs(glyphs) do
 				local xAdvance = (
-					glyphInfo.inW0
-					+ outDescr.renderSpacing
-					+ (outDescr.paddingAffectsRenderSpacing and outDescr.glyphPaddingL+outDescr.glyphPaddingR or 0)
-					+ (outDescr.outlineAffectsRenderSpacing and outDescr.outlineWidth or 0)
+					glyphInfo.inW0 == 0 and 0 or (
+						glyphInfo.inW0
+						+ outDescr.renderSpacing
+						+ (outDescr.paddingAffectsRenderSpacing and outDescr.glyphPaddingL+outDescr.glyphPaddingR or 0)
+						+ (outDescr.outlineAffectsRenderSpacing and outDescr.outlineWidth or 0)
+					)
 				)
 				table.insert(out_descriptorBuffer, F(
 					'char id=%d x=%d y=%d width=%d height=%d xoffset=%d yoffset=%d xadvance=%d page=%d chnl=%d\n',
