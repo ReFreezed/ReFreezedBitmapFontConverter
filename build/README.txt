@@ -188,10 +188,11 @@ File structure:
 
     # Width of the outline, if an outline should be added by the program.
     # (Default: 0, no outline is added)
-    outlineWidth=1
+    outlineWidth=width
 
     # Color of the outline, if one is added. The values should be numbers
-    # between 0 and 1. Alpha is 1 if omitted. (Default: 0 0 0 1)
+    # between 0 and 1. The parameter has multiple formats. Alpha is 1 if
+    # omitted. (Default: 0 0 0 1)
     outlineColor=grey
     outlineColor=grey alpha
     outlineColor=red green blue
@@ -213,7 +214,7 @@ File structure:
     # interpolation is used. The parameter has multiple formats.
     # (Default: 0 0 0 0)
     glyphPadding=padding
-    glyphPadding=vertival horizontal
+    glyphPadding=vertical horizontal
     glyphPadding=up horizontal down
     glyphPadding=up right down left
 
@@ -221,12 +222,12 @@ File structure:
     # font will be subject to mipmapping at a later point. The parameter has
     # multiple formats. (Default: 0 0)
     glyphSpacing=spacing
-    glyphSpacing=vertival horizontal
+    glyphSpacing=vertical horizontal
 
     # Extra space between the glyphs and the image border. The parameter has
     # multiple formats. (Default: 0 0)
     imagePadding=padding
-    imagePadding=vertival horizontal
+    imagePadding=vertical horizontal
 
     # Cell size in pixels for the grid that glyphs will be aligned on. It
     # might be relevant to increase this if the font will be subject to

@@ -214,7 +214,7 @@ function _G.loadParams()
 			elseif k == "pathPngCrush" then  params.pathPngCrush = v
 			elseif k == "pathRh"       then  params.pathRh       = v
 			elseif k == "pathIconv"    then  params.pathIconv    = v
-			else   printf("Warning: params.ini:%d: Unknown param '%s'.", k)  end
+			else   printf("Warning: params.ini:%d: Unknown param '%s'.", ln, k)  end
 		end
 	end
 
@@ -421,7 +421,7 @@ function _G.makeDirectory(dir)
 end
 function _G.makeDirectoryRecursive(dir)
 	if not isDirectory(dir) then
-		executeRequired("MKDIR", {dir})
+		executeRequired("MKDIR", {toWindowsPath(dir)})
 	end
 end
 
@@ -435,7 +435,7 @@ function _G.removeDirectory(dir)
 end
 function _G.removeDirectoryRecursive(dir)
 	if isDirectory(dir) then
-		executeRequired("RMDIR", {"/S", "/Q", dir})
+		executeRequired("RMDIR", {"/S", "/Q", toWindowsPath(dir)})
 	end
 end
 
