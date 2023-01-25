@@ -1,10 +1,13 @@
 Changelog
 ReFreezed Bitmap Font converter
 
+v1.3 (2023-01-25)
+- Added [out] parameter 'descriptorFormat' for specifying the file format of the output descriptor (text or xml).
+
 v1.2 (2021-04-12)
 - Added character filters for limiting what glyphs gets outputted.
-- Added 'imageFile' input parameter for specifying the filename of the input image.
-- Added "builtin" as a special value for the fontFile parameter.
+- Added [in] parameter 'imageFile' for specifying the filename of the input image.
+- Added "builtin" as a special value for the 'fontFile' parameter.
 - Added --silent option for disabling output to stdout.
 - More filename parameters can contain variables.
 - Better error messages when encountering invalid UTF-8 data.

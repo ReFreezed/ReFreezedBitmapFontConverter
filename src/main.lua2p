@@ -90,6 +90,8 @@ local function OutputDescriptor()
 		filenameImage      = "",
 		filenameDescriptor = "",
 
+		descriptorFormat = "text", -- "text"|"xml"
+
 		glyphColor = {1,1,1,1},
 
 		glyphPaddingU = 0,
@@ -554,6 +556,9 @@ function love.run()
 				elseif k == "fileDescriptor" then
 					local path                         = normalizePath(v ~= "" and v or fileError(rbmfFile, "Path cannot be empty."))
 					currentOutDescr.filenameDescriptor = processPathTemplate(rbmfFile, path)
+
+				elseif k == "descriptorFormat" then
+					currentOutDescr.descriptorFormat = (v == "text" or v == "xml") and v or fileError(rbmfFile, "Invalid descriptor format '%s'. (Valid values: text, xml)", v)
 
 				elseif k == "glyphColor" then
 					local c                = currentOutDescr.glyphColor
@@ -1172,6 +1177,16 @@ function love.run()
 		--
 		-- Write output images and descriptors
 		--
+		local function encodeXmlEntities(v)
+			return (v:gsub("[<>&\"']", {
+				["<"] = "&lt;",
+				[">"] = "&gt;",
+				["&"] = "&amp;",
+				['"'] = "&quot;",
+				["'"] = "&apos;",
+			}))
+		end
+
 		for outIndex, outDescr in ipairs(rbmfFile.outputDescriptors) do
 			-- @Feature: Automatic kerning calculations?
 
@@ -1273,22 +1288,47 @@ function love.run()
 			-- Start writing descriptor.
 			local out_descriptorBuffer = {}
 
-			table.insert(out_descriptorBuffer, F(
-				-- @Polish: Output correct value for 'smooth' and 'aa'. (Is this always possible, or ever useful?)
-				-- @Polish: Maybe have a way of specifying 'bold' and 'italic' (though it's probably useless information).
-				-- @Polish: We can do more here, but it's all probably useless!
-				'info face="" size=%d bold=0 italic=0 charset="" unicode=1 stretchH=100 smooth=0 aa=0 padding=%d,%d,%d,%d spacing=%d,%d outline=%d',
-				in_lineHeight, -- size
-				outDescr.glyphPaddingU, outDescr.glyphPaddingR, outDescr.glyphPaddingD, outDescr.glyphPaddingL, -- padding
-				outDescr.glyphSpacingH, outDescr.glyphSpacingV, -- spacing
-				outDescr.outlineWidth -- outline
-			))
-			for _, k in ipairs(outDescr.customValues) do
-				local v = outDescr.customValues[k]
-				table.insert(out_descriptorBuffer, F(" CUSTOM_%s=", k))
-				table.insert(out_descriptorBuffer, v:find"^%-?%d*%.?%d+$" and v or F('"%s"', v))
+			if outDescr.descriptorFormat == "xml" then
+				table.insert(out_descriptorBuffer, '<?xml version="1.0"?>\n')
+				table.insert(out_descriptorBuffer, "<font>\n")
 			end
-			table.insert(out_descriptorBuffer, "\n")
+
+			if outDescr.descriptorFormat == "text" then
+				table.insert(out_descriptorBuffer, F(
+					-- @Polish: Output correct value for 'smooth' and 'aa'. (Is this always possible, or ever useful?)
+					-- @Polish: Maybe have a way of specifying 'bold' and 'italic' (though it's probably useless information).
+					-- @Polish: We can do more here, but it's all probably useless!
+					'info face="" size=%d bold=0 italic=0 charset="" unicode=1 stretchH=100 smooth=0 aa=0 padding=%d,%d,%d,%d spacing=%d,%d outline=%d',
+					in_lineHeight, -- size
+					outDescr.glyphPaddingU, outDescr.glyphPaddingR, outDescr.glyphPaddingD, outDescr.glyphPaddingL, -- padding
+					outDescr.glyphSpacingH, outDescr.glyphSpacingV, -- spacing
+					outDescr.outlineWidth -- outline
+				))
+				for _, k in ipairs(outDescr.customValues) do
+					local v = outDescr.customValues[k]
+					table.insert(out_descriptorBuffer, F(" CUSTOM_%s=", k)) -- Note: Characters used in 'k' should already be validated.
+					table.insert(out_descriptorBuffer, v:find"^%-?%d*%.?%d+$" and v or F('"%s"', v))
+				end
+				table.insert(out_descriptorBuffer, "\n")
+
+			elseif outDescr.descriptorFormat == "xml" then
+				table.insert(out_descriptorBuffer, F(
+					-- @Polish: See above!
+					'<info face="" size="%d" bold="0" italic="0" charset="" unicode="1" stretchH="100" smooth="0" aa="0" padding="%d,%d,%d,%d" spacing="%d,%d" outline="%d"',
+					in_lineHeight, -- size
+					outDescr.glyphPaddingU, outDescr.glyphPaddingR, outDescr.glyphPaddingD, outDescr.glyphPaddingL, -- padding
+					outDescr.glyphSpacingH, outDescr.glyphSpacingV, -- spacing
+					outDescr.outlineWidth -- outline
+				))
+				for _, k in ipairs(outDescr.customValues) do
+					local v = outDescr.customValues[k]
+					table.insert(out_descriptorBuffer, F(' CUSTOM_%s="%s"', k, encodeXmlEntities(v))) -- Note: Characters used in 'k' should already be validated.
+				end
+				table.insert(out_descriptorBuffer, "/>\n")
+
+			else
+				error(outDescr.descriptorFormat)
+			end
 
 			local out_lineHeight = (
 				in_lineHeight
@@ -1296,21 +1336,50 @@ function love.run()
 				+ (outDescr.outlineAffectsRenderSpacing and outDescr.outlineWidth or 0)
 			)
 
-			table.insert(out_descriptorBuffer, F(
-				'common lineHeight=%d base=%d scaleW=%d scaleH=%d pages=%d packed=%d alphaChnl=0 redChnl=0 greenChnl=0 blueChnl=0\n',
-				out_lineHeight, -- lineHeight
-				out_lineHeight, -- base  @Incomplete: Some way of specifying this. (Probably low priority.)
-				pageWidth, pageHeight, -- scaleW, scaleH
-				#out_imageDatas, -- pages
-				(outDescr.pack and 1 or 0) -- packed
-			))
-
-			-- Write glyphs.
-			for page = 1, #out_imageDatas do
-				table.insert(out_descriptorBuffer, F('page id=%d file="%s"\n', page-1, outputImageFilenameBaseToFilename(outDescr.filenameImage, page)))
+			if outDescr.descriptorFormat == "text" then
+				table.insert(out_descriptorBuffer, F(
+					'common lineHeight=%d base=%d scaleW=%d scaleH=%d pages=%d packed=%d alphaChnl=0 redChnl=0 greenChnl=0 blueChnl=0\n',
+					out_lineHeight, -- lineHeight
+					out_lineHeight, -- base  @Incomplete: Some way of specifying this. (Probably low priority.)
+					pageWidth, pageHeight, -- scaleW, scaleH
+					#out_imageDatas, -- pages
+					(outDescr.pack and 1 or 0) -- packed
+				))
+			elseif outDescr.descriptorFormat == "xml" then
+				table.insert(out_descriptorBuffer, F(
+					'<common lineHeight="%d" base="%d" scaleW="%d" scaleH="%d" pages="%d" packed="%d" alphaChnl="0" redChnl="0" greenChnl="0" blueChnl="0"/>\n',
+					out_lineHeight, -- lineHeight
+					out_lineHeight, -- base  @Incomplete: Some way of specifying this. (Probably low priority.)
+					pageWidth, pageHeight, -- scaleW, scaleH
+					#out_imageDatas, -- pages
+					(outDescr.pack and 1 or 0) -- packed
+				))
+			else
+				error(outDescr.descriptorFormat)
 			end
 
-			table.insert(out_descriptorBuffer, F('chars count=%d\n', #glyphs))
+			-- Write glyphs.
+			if outDescr.descriptorFormat == "text" then
+				for page = 1, #out_imageDatas do
+					table.insert(out_descriptorBuffer, F('page id=%d file="%s"\n', page-1, outputImageFilenameBaseToFilename(outDescr.filenameImage, page)))
+				end
+			elseif outDescr.descriptorFormat == "xml" then
+				table.insert(out_descriptorBuffer, "<pages>\n")
+				for page = 1, #out_imageDatas do
+					table.insert(out_descriptorBuffer, F('\t<page id="%d" file="%s"/>\n', page-1, encodeXmlEntities(outputImageFilenameBaseToFilename(outDescr.filenameImage, page))))
+				end
+				table.insert(out_descriptorBuffer, "</pages>\n")
+			else
+				error(outDescr.descriptorFormat)
+			end
+
+			if outDescr.descriptorFormat == "text" then
+				table.insert(out_descriptorBuffer, F('chars count=%d\n', #glyphs))
+			elseif outDescr.descriptorFormat == "xml" then
+				table.insert(out_descriptorBuffer, F('<chars count="%d">\n', #glyphs))
+			else
+				error(outDescr.descriptorFormat)
+			end
 
 			-- for _, data in ipairs(out_imageDatas) do  data:mapPixel(function(x,y, r,g,b,a)  return 1, 0, 0, 1  end)  end -- DEBUG: Show areas we don't paste glyphs in.
 
@@ -1417,16 +1486,35 @@ function love.run()
 						+ (outDescr.outlineAffectsRenderSpacing and outDescr.outlineWidth or 0)
 					)
 				)
-				table.insert(out_descriptorBuffer, F(
-					'char id=%d x=%d y=%d width=%d height=%d xoffset=%d yoffset=%d xadvance=%d page=%d chnl=%d\n',
-					glyphInfo.cp, -- id
-					glyphInfo.outX, glyphInfo.outY, -- x, y
-					glyphInfo.outW, glyphInfo.outH, -- width, height
-					glyphInfo.inOffsetX, glyphInfo.inOffsetY, -- xoffset, yoffset
-					xAdvance, -- xadvance
-					glyphInfo.outPage-1, -- page
-					(outDescr.pack and 2^(glyphInfo.outChannel-1) or 15) -- chnl
-				))
+				if outDescr.descriptorFormat == "text" then
+					table.insert(out_descriptorBuffer, F(
+						'char id=%d x=%d y=%d width=%d height=%d xoffset=%d yoffset=%d xadvance=%d page=%d chnl=%d\n',
+						glyphInfo.cp, -- id
+						glyphInfo.outX, glyphInfo.outY, -- x, y
+						glyphInfo.outW, glyphInfo.outH, -- width, height
+						glyphInfo.inOffsetX, glyphInfo.inOffsetY, -- xoffset, yoffset
+						xAdvance, -- xadvance
+						glyphInfo.outPage-1, -- page
+						(outDescr.pack and 2^(glyphInfo.outChannel-1) or 15) -- chnl
+					))
+				elseif outDescr.descriptorFormat == "xml" then
+					table.insert(out_descriptorBuffer, F(
+						'\t<char id="%d" x="%d" y="%d" width="%d" height="%d" xoffset="%d" yoffset="%d" xadvance="%d" page="%d" chnl="%d"/>\n',
+						glyphInfo.cp, -- id
+						glyphInfo.outX, glyphInfo.outY, -- x, y
+						glyphInfo.outW, glyphInfo.outH, -- width, height
+						glyphInfo.inOffsetX, glyphInfo.inOffsetY, -- xoffset, yoffset
+						xAdvance, -- xadvance
+						glyphInfo.outPage-1, -- page
+						(outDescr.pack and 2^(glyphInfo.outChannel-1) or 15) -- chnl
+					))
+				else
+					error(outDescr.descriptorFormat)
+				end
+			end
+
+			if outDescr.descriptorFormat == "xml" then
+				table.insert(out_descriptorBuffer, F('</chars>\n', #glyphs))
 			end
 
 			-- Add glyph outlines.
@@ -1705,7 +1793,13 @@ function love.run()
 			if kerningPairs[1] then
 				table.sort(kerningPairs)
 
-				table.insert(out_descriptorBuffer, F('kernings count=%d\n', #kerningPairs))
+				if outDescr.descriptorFormat == "text" then
+					table.insert(out_descriptorBuffer, F('kernings count=%d\n', #kerningPairs))
+				elseif outDescr.descriptorFormat == "xml" then
+					table.insert(out_descriptorBuffer, F('<kernings count="%d">\n', #kerningPairs))
+				else
+					error(outDescr.descriptorFormat)
+				end
 
 				for _, pair in ipairs(kerningPairs) do
 					local first, second = pair:match(F("(%s)(%s)", utf8.charpattern, utf8.charpattern))
@@ -1714,7 +1808,17 @@ function love.run()
 
 					local offset = rbmfFile.kernings[pair]
 
-					table.insert(out_descriptorBuffer, F('kerning first=%d second=%d amount=%d\n', first, second, offset))
+					if outDescr.descriptorFormat == "text" then
+						table.insert(out_descriptorBuffer, F('kerning first=%d second=%d amount=%d\n', first, second, offset))
+					elseif outDescr.descriptorFormat == "xml" then
+						table.insert(out_descriptorBuffer, F('\t<kerning first="%d" second="%d" amount="%d"/>\n', first, second, offset))
+					else
+						error(outDescr.descriptorFormat)
+					end
+				end
+
+				if outDescr.descriptorFormat == "xml" then
+					table.insert(out_descriptorBuffer, '</kernings>\n')
 				end
 			end
 
@@ -1752,6 +1856,10 @@ function love.run()
 			end
 
 			if outDescr.filenameDescriptor ~= "" then
+				if outDescr.descriptorFormat == "xml" then
+					table.insert(out_descriptorBuffer, '</font>\n')
+				end
+
 				local pathObj       = Path(outDescr.filenameDescriptor, rbmfFile.outDirectory)
 				local dir, filename = pathObj:getDirectoryAndFilename()
 

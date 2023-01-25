@@ -178,6 +178,10 @@ File structure:
     # parameter!
     fileDescriptor=filename
 
+	# Format of the outputted BMFont descriptor. Possible values are 'text' or
+	# 'xml'. (Default: text)
+    descriptorFormat=format
+
     # Color of the glyphs (multiplied with the input pixels). The values
     # should be numbers between 0 and 1. The parameter has multiple formats.
     # Alpha is 1 if omitted. (Default: 1 1 1 1)
@@ -283,7 +287,8 @@ File structure:
     custom.lineHeight=1.2
     custom.isBig=true
     # These will show up at the end of the 'info' line in the BMFont file like this:
-    # info face="" (...) CUSTOM_lineHeight=1.2 CUSTOM_isBig="true"
+    #   info face="" (...) CUSTOM_lineHeight=1.2 CUSTOM_isBig="true"
+    # Note that non-numeric values will be encased in quotes while numbers won't.
 
 
     # Sections with numbers as names specify what glyphs are on each row in
